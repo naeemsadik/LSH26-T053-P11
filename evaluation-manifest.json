@@ -1,0 +1,97 @@
+{
+  "team_id": "LSH26-T053",
+  "problem_id": "P11",
+  "repository_name": "LSH26-T053-P11",
+  "live_url": "https://routeboard.onrender.com",
+  "demo_video_url_optional": "",
+  "event_start_code": "LSH26-8490-C900",
+  "repository_created_before_release": false,
+  "pre_event_materials": [],
+  "sample_data": {
+    "loads_published_fixture": true,
+    "method": "The Next.js fallback imports Data/P11_route_shift_public.json directly, and the Spring DataSeeder loads the same published fixture into an empty PostgreSQL database.",
+    "reset_instructions": "Browser mode: remove routeboard-workspace-v1 from localStorage and reload. Backend mode: use an empty PostgreSQL database and restart the API; OPTIMIZER_SEED_CASE_ID selects the case and defaults to PUB-01."
+  },
+  "problem_solving_method": "Built a deterministic route and shift planner around one reusable hard-rule validator. Jobs are ordered by time-window urgency, evaluated at every route insertion position, and assigned by minimum added travel with window risk as a tiebreaker. A local-search pass attempts feasible relocations and swaps to reduce total travel. Every unscheduled job receives a specific blocking reason, and the same validation rules protect manual reassignment and active replanning.",
+  "requirements": {
+    "R1": {
+      "status": "complete",
+      "evidence": "Data/P11_route_shift_public.json, backend/src/main/java/com/example/routeoptimizer/model/, backend/src/main/java/com/example/routeoptimizer/seed/DataSeeder.java - published cases plus technician, job, skill, shift, area, status, and travel-matrix models."
+    },
+    "R2": {
+      "status": "complete",
+      "evidence": "backend/src/main/java/com/example/routeoptimizer/service/ScheduleValidator.java and frontend/src/lib/planner.ts - skill, customer-window, travel, shift-end, availability, and route-order validation."
+    },
+    "R3": {
+      "status": "complete",
+      "evidence": "backend/src/main/java/com/example/routeoptimizer/service/AssignmentEngine.java, LocalSearchOptimizer.java, and ScoringService.java - urgent-window greedy insertion, deterministic tiebreaking, relocation/swap improvement, and score calculation."
+    },
+    "R4": {
+      "status": "complete",
+      "evidence": "frontend/src/app/dispatcher.tsx and dispatcher.module.css - plan score, travel and coverage statistics, Gantt-style technician timeline, travel/idle states, and always-visible unassigned reasons."
+    },
+    "R5": {
+      "status": "complete",
+      "evidence": "frontend/src/app/dispatcher.tsx, frontend/src/app/api/plan/[action]/route.ts, and backend/src/main/java/com/example/routeoptimizer/service/PlanService.java - drag reassignment, stateless move validation, specific broken-rule feedback, and committed plan updates."
+    },
+    "R6": {
+      "status": "complete",
+      "evidence": "frontend/src/app/dispatcher.tsx and backend/src/main/java/com/example/routeoptimizer/service/BaselinePlanner.java - baseline comparison, analytics, emergency-job replanning, and sick-technician redistribution."
+    },
+    "R7": {
+      "status": "complete",
+      "evidence": "frontend/src/lib/backend.ts, frontend/src/app/api/, backend/src/main/java/com/example/routeoptimizer/entity/, docker-compose.yml, Dockerfile, and render.yaml - persisted setup/plan state, frontend API proxy, browser fallback, linked backend repository, and container deployment."
+    },
+    "R8": {
+      "status": "complete",
+      "evidence": "frontend/tests/app.spec.ts and backend/src/test/java/com/example/routeoptimizer/ - responsive UI, persistence, API rule validation, all-25-case plan partitions, optimization, manual move, and disruption tests."
+    }
+  },
+  "team_members": [
+    {
+      "registered_name": "Naeem Abdullah Sadik",
+      "github_username": "naeemsadik",
+      "major_contribution": "Frontend application, in-browser planner, backend integration, persistence workflows, UI and analytics, public-data seeding integration, deployment configuration, testing, and documentation.",
+      "evidence_paths_or_commits": [
+        "frontend/",
+        "Data/",
+        "Dockerfile",
+        "docker-compose.yml",
+        "render.yaml",
+        "3d673b8",
+        "c8c7889",
+        "ad56a86"
+      ]
+    },
+    {
+      "registered_name": "Sajid",
+      "github_username": "",
+      "major_contribution": "Initial Spring Boot backend, data models, controllers, assignment and local-search services, persistence layer, and backend test suite.",
+      "evidence_paths_or_commits": [
+        "backend/src/main/java/",
+        "backend/src/test/java/",
+        "06642cc"
+      ]
+    }
+  ],
+  "major_design_decisions": [
+    "One validator for every scheduling path: automatic assignment, manual moves, emergency replanning, and sick-day redistribution share the same hard-rule checks.",
+    "Deterministic greedy insertion plus bounded local search: the planner stays explainable and fast for the published problem size without adding a heavyweight solver.",
+    "Server-side API proxy with a browser fallback: deployed Next.js routes use the standalone Spring API, while the published fixtures and TypeScript planner keep the evaluation workflow usable when the backend is unavailable.",
+    "Operational UI without chart or drag-and-drop dependencies: CSS timelines and analytical bars plus native drag events keep the interface compact and the dependency surface small."
+  ],
+  "known_limitations": [
+    "The live Spring API operates on one active dataset case at a time; selecting another seed case requires an empty database and OPTIMIZER_SEED_CASE_ID before startup.",
+    "The application has no authentication or multi-tenant access control; it is designed as a single-team event prototype.",
+    "Native HTML drag-and-drop is optimized for pointer devices and does not provide a dedicated touch reordering interaction."
+  ],
+  "ai_tools_used": [
+    {
+      "tool": "OpenAI Codex",
+      "used_for": "Frontend and backend implementation support, UI refinement, API integration, deployment configuration, tests, debugging, and documentation.",
+      "how_output_was_verified": "Frontend output was checked with ESLint, TypeScript, six Playwright browser/API tests covering all 25 published cases, responsive screenshots, and the Next.js production build. Backend changes were checked against API contracts and the Spring test suite structure; the seed JSON was parsed and verified against every area and skill enum."
+    }
+  ],
+  "licenses_file": "LICENSES.md",
+  "declaration": "The information above is complete and truthful to the best of the team's knowledge."
+}
