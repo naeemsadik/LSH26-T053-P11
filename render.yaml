@@ -6,12 +6,12 @@ services:
     region: singapore
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /api/health
+    healthCheckPath: /
     envVars:
       - key: PORT
         value: 10000
-      - key: BACKEND_HOSTPORT
+      - key: BACKEND_URL
         fromService:
           type: web
           name: routeboard-api
-          property: hostport
+          envVarKey: RENDER_EXTERNAL_URL

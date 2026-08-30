@@ -29,7 +29,7 @@ npx playwright install chromium
 
 The Spring API lives in the separate [Routeboard backend repository](https://github.com/naeemsadik/LSH26-T053-P11-Backend).
 
-Set the server-only `BACKEND_URL` to its public API root. Render uses `BACKEND_HOSTPORT` to connect privately to the `routeboard-api` service. Without either value, the public-data workspace saves in browser storage for standalone frontend development. Connected paths:
+Set the server-only `BACKEND_URL` to its public API root. Render copies `routeboard-api`'s generated `RENDER_EXTERNAL_URL` into this variable. Without `BACKEND_URL` or `BACKEND_HOSTPORT`, the public-data workspace saves in browser storage for standalone frontend development. Connected paths:
 
 - `POST /plan/generate`
 - `POST /plan/validate-move`

@@ -34,7 +34,7 @@ git submodule update --init --recursive
 ## Render deployment
 
 1. Create a Blueprint from the [backend repository](https://github.com/naeemsadik/LSH26-T053-P11-Backend). It creates `routeboard-api` and `routeboard-db`.
-2. Create a Blueprint from this repository. It creates the `routeboard` frontend and connects to the existing API over Render's private network.
+2. Create a Blueprint from this repository. It creates the `routeboard` frontend and injects the existing API's public Render URL.
 
 Do not create the backend as a standalone Web Service. Both Blueprints must be
 in the same Render workspace. The frontend calls Spring only through server-side
