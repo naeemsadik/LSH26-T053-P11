@@ -19,3 +19,5 @@ Stop with `docker compose down`. Add `-v` only when you intend to delete local d
 Create a new Blueprint in Render and select this repository. The root `render.yaml` creates the frontend, API, and PostgreSQL database from the same Dockerfiles used by Compose.
 
 The frontend calls Spring through server-side Next.js route handlers. `BACKEND_URL` therefore remains a runtime server variable and no browser CORS configuration is required.
+
+For a manually created frontend service, Render can use the root `Dockerfile`. Set `BACKEND_URL` to the deployed API URL.

@@ -28,7 +28,7 @@ services:
     runtime: docker
     plan: free
     region: singapore
-    dockerfilePath: ./frontend/Dockerfile
+    dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
     envVars:

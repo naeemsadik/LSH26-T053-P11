@@ -36,7 +36,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: Dockerfile
     environment:
       BACKEND_URL: http://backend:8080
       HOSTNAME: 0.0.0.0
