@@ -4,26 +4,29 @@ import {
   AlertTriangle,
   ArrowRight,
   BadgeCheck,
+  BarChart3,
   CalendarDays,
   CarFront,
   Check,
   CircleAlert,
   Clock3,
-  Database,
   Download,
   Droplets,
   Flame,
   GitCompareArrows,
+  Gauge,
   GripVertical,
   LayoutDashboard,
   LoaderCircle,
   MapPin,
+  MapPinned,
   Plus,
   Route,
   Search,
   Siren,
   Snowflake,
   Table2,
+  TrendingDown,
   UserRoundX,
   UsersRound,
   Wrench,
@@ -44,7 +47,7 @@ import type {
   Technician,
 } from "@/lib/types";
 
-type View = "plan" | "setup" | "compare";
+type View = "plan" | "setup" | "analytics" | "compare";
 type SetupTab = "technicians" | "jobs" | "matrix";
 type TimelineSource = "baseline" | "working";
 type SetupModal = "technician" | "job" | null;
@@ -84,10 +87,16 @@ function formatSkill(value: string): string {
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
     day: "2-digit",
-    month: "short",
+    month: "long",
     year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function formatWeekday(value: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
     timeZone: "UTC",
   }).format(new Date(`${value}T00:00:00Z`));
 }
@@ -222,7 +231,7 @@ function TimelineBoard({
               <div className={`${styles.technicianRow} ${changedTechnicians.has(technician.id) ? styles.routeChanged : ""}`} key={technician.id}>
                 <div className={styles.technicianCell}>
                   <span className={styles.techAvatar}>{technician.name.slice(0, 1)}</span>
-                  <span><strong>{technician.name}</strong><small>{technician.id} · {technician.shift_start}-{technician.shift_end}</small></span>
+                  <span><strong>{technician.name}</strong><small>{technician.id} / {technician.shift_start}-{technician.shift_end}</small></span>
                   <button type="button" disabled={inactive} title={inactive ? "Technician unavailable" : "Mark technician sick"} aria-label={`Mark ${technician.name} sick`} onClick={() => onSick(technician)}><UserRoundX size={15} /></button>
                 </div>
                 <div className={inactive ? `${styles.lane} ${styles.laneInactive}` : styles.lane} onDragOver={(event) => editable && event.preventDefault()} onDrop={(event) => dropOnLane(event, technician.id)}>
@@ -310,7 +319,7 @@ export default function Dispatcher({
   useEffect(() => {
     const restore = window.setTimeout(() => {
       const [view, tab] = window.location.hash.slice(1).split("/");
-      if (view === "plan" || view === "setup" || view === "compare") setActiveView(view);
+      if (view === "plan" || view === "setup" || view === "analytics" || view === "compare") setActiveView(view);
       if (tab === "technicians" || tab === "jobs" || tab === "matrix") setSetupTab(tab);
 
       if (apiMode === "Browser save") {
@@ -351,6 +360,54 @@ export default function Dispatcher({
       ? caseData.jobs.filter((job) => `${job.id} ${job.area} ${formatSkill(job.skill)}`.toLowerCase().includes(query))
       : caseData.jobs;
   }, [caseData.jobs, jobSearch]);
+  const analytics = useMemo(() => {
+    const scheduled = Object.values(plan.assignments).flat();
+    const scheduledIds = new Set(scheduled.map((item) => item.job_id));
+    const activeTechnicians = caseData.technicians.filter((item) => item.status !== "sick");
+    const availableMinutes = activeTechnicians.reduce(
+      (total, item) => total + Math.max(0, toMinutes(item.shift_end) - toMinutes(item.shift_start)),
+      0,
+    );
+    const serviceMinutes = scheduled.reduce((total, item) => total + item.duration_minutes, 0);
+    const usedMinutes = serviceMinutes + plan.stats.total_travel_minutes;
+    const areaRows = caseData.areas.map((area) => {
+      const jobs = caseData.jobs.filter((item) => item.area === area);
+      return {
+        area,
+        total: jobs.length,
+        scheduled: jobs.filter((item) => scheduledIds.has(item.id)).length,
+      };
+    }).sort((a, b) => b.total - a.total || a.area.localeCompare(b.area));
+    const maxAreaJobs = Math.max(1, ...areaRows.map((item) => item.total));
+    const skillRows = [...new Set(caseData.jobs.map((item) => item.skill))].map((skill) => ({
+      skill,
+      jobs: caseData.jobs.filter((item) => item.skill === skill).length,
+      technicians: activeTechnicians.filter((item) => item.skills.includes(skill)).length,
+    })).sort((a, b) => b.jobs - a.jobs);
+    const workloads = caseData.technicians.map((technician) => {
+      const route = plan.assignments[technician.id] ?? [];
+      const shiftMinutes = Math.max(1, toMinutes(technician.shift_end) - toMinutes(technician.shift_start));
+      const service = route.reduce((total, item) => total + item.duration_minutes, 0);
+      const travel = route.reduce((total, item) => total + item.travel_minutes, 0);
+      return {
+        technician,
+        jobs: route.length,
+        travel,
+        utilization: technician.status === "sick" ? 0 : Math.min(100, Math.round(((service + travel) / shiftMinutes) * 100)),
+      };
+    }).sort((a, b) => b.utilization - a.utilization || a.technician.name.localeCompare(b.technician.name));
+
+    return {
+      coverage: caseData.jobs.length ? Math.round((plan.stats.jobs_scheduled / caseData.jobs.length) * 100) : 0,
+      utilization: availableMinutes ? Math.round((usedMinutes / availableMinutes) * 100) : 0,
+      travelPerJob: plan.stats.jobs_scheduled ? Math.round(plan.stats.total_travel_minutes / plan.stats.jobs_scheduled) : 0,
+      travelSaved: baselinePlan.stats.total_travel_minutes - plan.stats.total_travel_minutes,
+      areaRows,
+      maxAreaJobs,
+      skillRows,
+      workloads,
+    };
+  }, [baselinePlan.stats.total_travel_minutes, caseData, plan]);
 
   const notify = (message: string) => {
     setNotice(message);
@@ -369,6 +426,7 @@ export default function Dispatcher({
 
   const openSetupTab = (tab: SetupTab) => {
     setSetupTab(tab);
+    setActiveView("setup");
     window.history.replaceState(null, "", `#setup/${tab}`);
   };
 
@@ -659,10 +717,21 @@ export default function Dispatcher({
 
   const views = [
     { id: "plan" as const, label: "Plan", icon: LayoutDashboard },
-    { id: "setup" as const, label: "Setup", icon: Database },
+    { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "compare" as const, label: "Compare", icon: GitCompareArrows },
   ];
-  const stats = displayPlan.stats;
+  const dataViews = [
+    { id: "technicians" as const, label: "Technicians", icon: UsersRound, count: caseData.technicians.length },
+    { id: "jobs" as const, label: "Jobs", icon: Wrench, count: caseData.jobs.length },
+    { id: "matrix" as const, label: "Travel times", icon: Table2, count: caseData.areas.length },
+  ];
+  const setupCopy = {
+    technicians: { kicker: "Team setup", title: "Technicians", description: `Skills and shift availability for ${formatDate(caseData.today)}.` },
+    jobs: { kicker: "Work setup", title: "Jobs", description: `${caseData.jobs.length} service requests for this dispatch date.` },
+    matrix: { kicker: "Travel setup", title: "Travel times", description: "Edit the drive time between any two service areas." },
+  }[setupTab];
+  const statsPlan = activeView === "analytics" ? plan : displayPlan;
+  const stats = statsPlan.stats;
 
   return (
     <main className={styles.app}>
@@ -677,10 +746,15 @@ export default function Dispatcher({
           {views.map((view) => { const Icon = view.icon; return <button type="button" key={view.id} className={activeView === view.id ? styles.navActive : ""} onClick={() => openView(view.id)}><Icon size={16} />{view.label}</button>; })}
         </nav>
 
+        <span className={styles.sidebarLabel}>Data setup</span>
+        <nav className={styles.dataNav} aria-label="Data setup views">
+          {dataViews.map((view) => { const Icon = view.icon; return <button type="button" key={view.id} className={activeView === "setup" && setupTab === view.id ? styles.navActive : ""} onClick={() => openSetupTab(view.id)}><Icon size={16} /><span>{view.label}</span><small>{view.count}</small></button>; })}
+        </nav>
+
         <span className={styles.sidebarLabel}>Day controls</span>
         <div className={styles.sidebarActions}>
           <button className={styles.generateButton} type="button" onClick={() => generate()} disabled={!!busyAction}>{busyAction === "generate" ? <LoaderCircle className={styles.spinner} size={17} /> : <Route size={17} />} Generate plan</button>
-          <button className={styles.emergencyButton} type="button" onClick={() => { if (hasUnsavedChanges) { openView("setup"); setError("Save setup before adding an emergency job."); } else { setShowEmergency(true); } }}><Siren size={17} /> Emergency job</button>
+          <button className={styles.emergencyButton} type="button" onClick={() => { if (hasUnsavedChanges) { openSetupTab(setupTab); setError("Save setup before adding an emergency job."); } else { setShowEmergency(true); } }}><Siren size={17} /> Emergency job</button>
         </div>
         <div className={styles.sidebarFooter}>
           <span className={styles.apiStatus}><i />{apiMode}</span>
@@ -688,17 +762,18 @@ export default function Dispatcher({
       </aside>
 
       <header className={styles.topbar}>
-        <span className={styles.date}>
-          <CalendarDays size={17} />
-          <span><small>Dispatch day</small><strong>{formatDate(caseData.today)}</strong></span>
-        </span>
+        <div className={styles.dateContext}>
+          <span className={styles.dateIcon}><CalendarDays size={19} /></span>
+          <span className={styles.datePrimary}><small>Operating date</small><strong>{formatDate(caseData.today)}</strong></span>
+          <span className={styles.dateSummary}><b>{formatWeekday(caseData.today)}</b><small>{caseData.technicians.length} technicians / {caseData.jobs.length} jobs / {caseData.areas.length} areas</small></span>
+        </div>
         <label className={styles.caseSelect}><span>Case</span><select value={caseData.case_id} onChange={(event) => selectCase(event.target.value)} disabled={!!busyAction}>{cases.map((item) => <option key={item.case_id} value={item.case_id}>{item.case_id} / {item.technicians} tech / {item.jobs} jobs</option>)}</select></label>
       </header>
 
       <div className={styles.workspace}>
-      {(activeView === "plan" || activeView === "compare") && (
+      {(activeView === "plan" || activeView === "analytics" || activeView === "compare") && (
         <section className={styles.statsBar} aria-label="Current plan statistics">
-          <div className={styles.scoreStat}><span>Plan score</span><strong>{displayPlan.score}</strong><em>/100</em></div>
+          <div className={styles.scoreStat}><span>Plan score</span><strong>{statsPlan.score}</strong><em>/100</em></div>
           <Stat icon={<CarFront size={18} />} label="Total travel" value={`${Math.floor(stats.total_travel_minutes / 60)}h ${stats.total_travel_minutes % 60}m`} note="Across all routes" />
           <Stat icon={<BadgeCheck size={18} />} label="Jobs scheduled" value={String(stats.jobs_scheduled)} note={`${caseData.jobs.length} jobs received`} />
           <Stat icon={<CircleAlert size={18} />} label="Unassigned" value={String(stats.jobs_unassigned)} note={stats.jobs_unassigned ? "Needs dispatcher action" : "All work covered"} alert={stats.jobs_unassigned > 0} />
@@ -713,7 +788,7 @@ export default function Dispatcher({
         <section className={styles.planWorkspace}>
           <div className={styles.planMain}>
             <div className={styles.planToolbar}>
-              <div><span className={styles.kicker}>Monday dispatch</span><h1>{caseData.case_id} day plan</h1><p>{caseData.technicians.length} technicians across {caseData.areas.length} Dhaka service areas</p></div>
+              <div><span className={styles.kicker}>{formatWeekday(caseData.today)} dispatch</span><h1>{caseData.case_id} day plan</h1><p>{caseData.technicians.length} technicians across {caseData.areas.length} Dhaka service areas</p></div>
               <div className={styles.toolbarRight}>
                 <div className={styles.sourceToggle} aria-label="Timeline plan source"><button type="button" className={timelineSource === "baseline" ? styles.sourceActive : ""} onClick={() => setTimelineSource("baseline")}>Baseline</button><button type="button" className={timelineSource === "working" ? styles.sourceActive : ""} onClick={() => setTimelineSource("working")}>Working</button></div>
                 <button className={styles.iconButton} type="button" title="Export plan" aria-label="Export plan" onClick={exportPlan}><Download size={17} /></button>
@@ -724,21 +799,53 @@ export default function Dispatcher({
 
           <aside className={styles.unassignedPanel} aria-label="Unassigned jobs">
             <div className={styles.unassignedHeader}><div><span className={styles.kicker}>Backend result</span><h2>Unassigned jobs</h2></div><span>{displayPlan.unassigned.length}</span></div>
-            {displayPlan.unassigned.length === 0 ? <div className={styles.zeroState}><BadgeCheck size={25} /><strong>0 unassigned</strong><p>Every job has a confirmed route.</p></div> : <div className={styles.unassignedList}>{displayPlan.unassigned.map((item) => <article key={item.job_id}><div><span className={`${styles.skillMark} ${styles[`skill_${item.skill}`]}`}>{skillIcon(item.skill, 14)}</span><span><strong>{item.job_id}</strong><small>{item.area} · {formatSkill(item.skill)}</small></span><time>{item.window_start}-{item.window_end}</time></div><p><CircleAlert size={13} />{item.reason_text}</p></article>)}</div>}
+            {displayPlan.unassigned.length === 0 ? <div className={styles.zeroState}><BadgeCheck size={25} /><strong>0 unassigned</strong><p>Every job has a confirmed route.</p></div> : <div className={styles.unassignedList}>{displayPlan.unassigned.map((item) => <article key={item.job_id}><div><span className={`${styles.skillMark} ${styles[`skill_${item.skill}`]}`}>{skillIcon(item.skill, 14)}</span><span><strong>{item.job_id}</strong><small>{item.area} / {formatSkill(item.skill)}</small></span><time>{item.window_start}-{item.window_end}</time></div><p><CircleAlert size={13} />{item.reason_text}</p></article>)}</div>}
           </aside>
         </section>
       )}
 
       {activeView === "setup" && (
         <section className={styles.setupView}>
-          <div className={styles.viewTitle}><div><span className={styles.kicker}>Input workspace</span><h1>Case setup</h1><p>Manage the people, work, and travel times used by the plan.</p></div><div>{hasUnsavedChanges ? <span className={styles.changeStatus}><CircleAlert size={14} /> Unsaved changes</span> : planNeedsRefresh ? <span className={styles.changeStatus}><CircleAlert size={14} /> Update needed</span> : <span className={styles.savedStatus}><Check size={14} /> Saved</span>}<button className={styles.primaryButton} type="button" onClick={saveSetup} disabled={!!busyAction || !hasUnsavedChanges}>{busyAction === "save" ? <LoaderCircle className={styles.spinner} size={16} /> : <Check size={16} />} Save and update plan</button></div></div>
-          <div className={styles.setupTabs}>{(["technicians", "jobs", "matrix"] as SetupTab[]).map((tab) => <button type="button" className={setupTab === tab ? styles.setupTabActive : ""} onClick={() => openSetupTab(tab)} key={tab}>{tab === "technicians" ? <UsersRound size={16} /> : tab === "jobs" ? <Wrench size={16} /> : <Table2 size={16} />}{tab === "matrix" ? "Travel times" : tab[0].toUpperCase() + tab.slice(1)}<span>{tab === "technicians" ? caseData.technicians.length : tab === "jobs" ? caseData.jobs.length : caseData.areas.length}</span></button>)}</div>
+          <div className={styles.viewTitle}><div><span className={styles.kicker}>{setupCopy.kicker}</span><h1>{setupCopy.title}</h1><p>{setupCopy.description}</p></div><div>{hasUnsavedChanges ? <span className={styles.changeStatus}><CircleAlert size={14} /> Unsaved changes</span> : planNeedsRefresh ? <span className={styles.changeStatus}><CircleAlert size={14} /> Update needed</span> : <span className={styles.savedStatus}><Check size={14} /> Saved</span>}<button className={styles.primaryButton} type="button" onClick={saveSetup} disabled={!!busyAction || !hasUnsavedChanges}>{busyAction === "save" ? <LoaderCircle className={styles.spinner} size={16} /> : <Check size={16} />} Save and update plan</button></div></div>
 
-          {setupTab === "technicians" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Technicians</h2><p>Skills and shift availability for {caseData.today}.</p></div><button className={styles.secondaryButton} type="button" onClick={() => setSetupModal("technician")}><Plus size={16} /> Add technician</button></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Name</th><th>Skills</th><th>Shift start</th><th>Shift end</th><th>Home area</th><th>Status</th></tr></thead><tbody>{caseData.technicians.map((technician, index) => <tr key={technician.id}><td><code>{technician.id}</code></td><td><input value={technician.name} onChange={(event) => updateTechnician(index, "name", event.target.value)} aria-label={`${technician.id} name`} /></td><td><input value={technician.skills.join(", ")} onChange={(event) => updateTechnician(index, "skills", event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} aria-label={`${technician.id} skills`} /></td><td><input type="time" value={technician.shift_start} onChange={(event) => updateTechnician(index, "shift_start", event.target.value)} aria-label={`${technician.id} shift start`} /></td><td><input type="time" value={technician.shift_end} onChange={(event) => updateTechnician(index, "shift_end", event.target.value)} aria-label={`${technician.id} shift end`} /></td><td><select value={technician.home_area} onChange={(event) => updateTechnician(index, "home_area", event.target.value)} aria-label={`${technician.id} home area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={technician.status ?? "active"} onChange={(event) => updateTechnician(index, "status", event.target.value)} aria-label={`${technician.id} status`}><option value="active">Active</option><option value="sick">Sick</option></select></td></tr>)}</tbody></table></div></div>}
+          {setupTab === "technicians" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Technicians</h2><p>Skills and shift availability for {formatDate(caseData.today)}.</p></div><button className={styles.secondaryButton} type="button" onClick={() => setSetupModal("technician")}><Plus size={16} /> Add technician</button></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Name</th><th>Skills</th><th>Shift start</th><th>Shift end</th><th>Home area</th><th>Status</th></tr></thead><tbody>{caseData.technicians.map((technician, index) => <tr key={technician.id}><td><code>{technician.id}</code></td><td><input value={technician.name} onChange={(event) => updateTechnician(index, "name", event.target.value)} aria-label={`${technician.id} name`} /></td><td><input value={technician.skills.join(", ")} onChange={(event) => updateTechnician(index, "skills", event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} aria-label={`${technician.id} skills`} /></td><td><input type="time" value={technician.shift_start} onChange={(event) => updateTechnician(index, "shift_start", event.target.value)} aria-label={`${technician.id} shift start`} /></td><td><input type="time" value={technician.shift_end} onChange={(event) => updateTechnician(index, "shift_end", event.target.value)} aria-label={`${technician.id} shift end`} /></td><td><select value={technician.home_area} onChange={(event) => updateTechnician(index, "home_area", event.target.value)} aria-label={`${technician.id} home area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={technician.status ?? "active"} onChange={(event) => updateTechnician(index, "status", event.target.value)} aria-label={`${technician.id} status`}><option value="active">Active</option><option value="sick">Sick</option></select></td></tr>)}</tbody></table></div></div>}
 
-          {setupTab === "jobs" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Jobs</h2><p>{caseData.jobs.length} service requests.</p></div><div className={styles.tableActions}><label className={styles.searchField}><Search size={15} /><input value={jobSearch} onChange={(event) => setJobSearch(event.target.value)} placeholder="Search jobs" aria-label="Search jobs" /></label><button className={styles.secondaryButton} type="button" onClick={() => setSetupModal("job")}><Plus size={16} /> Add job</button></div></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Area</th><th>Required skill</th><th>Duration</th><th>Window start</th><th>Window end</th><th>Status</th></tr></thead><tbody>{filteredJobs.map((job, index) => <tr key={job.id}><td><code>{job.id}</code></td><td><select value={job.area} onChange={(event) => updateJob(index, "area", event.target.value)} aria-label={`${job.id} area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={job.skill} onChange={(event) => updateJob(index, "skill", event.target.value)} aria-label={`${job.id} skill`}><option value="electrical">Electrical</option><option value="plumbing">Plumbing</option><option value="ac">AC</option><option value="gas_line">Gas line</option></select></td><td><input type="number" min="15" step="15" value={job.duration_minutes} onChange={(event) => updateJob(index, "duration_minutes", Number(event.target.value))} aria-label={`${job.id} duration`} /></td><td><input type="time" value={job.window_start} onChange={(event) => updateJob(index, "window_start", event.target.value)} aria-label={`${job.id} window start`} /></td><td><input type="time" value={job.window_end} onChange={(event) => updateJob(index, "window_end", event.target.value)} aria-label={`${job.id} window end`} /></td><td><select value={job.status ?? "ready"} onChange={(event) => updateJob(index, "status", event.target.value)} aria-label={`${job.id} status`}><option value="ready">Pending</option><option value="in_progress">In progress</option><option value="done">Done</option></select></td></tr>)}</tbody></table></div></div>}
+          {setupTab === "jobs" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Jobs</h2><p>{caseData.jobs.length} service requests.</p></div><div className={styles.tableActions}><label className={styles.searchField}><Search size={15} /><input value={jobSearch} onChange={(event) => setJobSearch(event.target.value)} placeholder="Search jobs" aria-label="Search jobs" /></label><button className={styles.secondaryButton} type="button" onClick={() => setSetupModal("job")}><Plus size={16} /> Add job</button></div></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Area</th><th>Required skill</th><th>Duration</th><th>Window start</th><th>Window end</th><th>Status</th></tr></thead><tbody>{filteredJobs.map((job) => { const index = caseData.jobs.findIndex((item) => item.id === job.id); return <tr key={job.id}><td><code>{job.id}</code></td><td><select value={job.area} onChange={(event) => updateJob(index, "area", event.target.value)} aria-label={`${job.id} area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={job.skill} onChange={(event) => updateJob(index, "skill", event.target.value)} aria-label={`${job.id} skill`}><option value="electrical">Electrical</option><option value="plumbing">Plumbing</option><option value="ac">AC</option><option value="gas_line">Gas line</option></select></td><td><input type="number" min="15" step="15" value={job.duration_minutes} onChange={(event) => updateJob(index, "duration_minutes", Number(event.target.value))} aria-label={`${job.id} duration`} /></td><td><input type="time" value={job.window_start} onChange={(event) => updateJob(index, "window_start", event.target.value)} aria-label={`${job.id} window start`} /></td><td><input type="time" value={job.window_end} onChange={(event) => updateJob(index, "window_end", event.target.value)} aria-label={`${job.id} window end`} /></td><td><select value={job.status ?? "ready"} onChange={(event) => updateJob(index, "status", event.target.value)} aria-label={`${job.id} status`}><option value="ready">Pending</option><option value="in_progress">In progress</option><option value="done">Done</option></select></td></tr>; })}</tbody></table></div></div>}
 
           {setupTab === "matrix" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Travel times</h2><p>Choose two areas and enter the drive time once.</p></div></div><div className={styles.matrixEditor}><label><span>From</span><select value={matrixFrom} onChange={(event) => setMatrixFrom(event.target.value)} aria-label="From area">{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></label><ArrowRight size={18} /><label><span>To</span><select value={matrixTo} onChange={(event) => setMatrixTo(event.target.value)} aria-label="To area">{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></label><label><span>Minutes</span><input type="number" min="0" step="1" value={caseData.travel_minutes[matrixFrom]?.[matrixTo] ?? 0} onChange={(event) => { if (event.target.value) updateTravelTime(matrixFrom, matrixTo, Number(event.target.value)); }} aria-label="Travel minutes" /></label></div><div className={styles.matrixScroll}><table className={styles.matrix}><thead><tr><th>From / to</th>{caseData.areas.map((area) => <th key={area}>{area}</th>)}</tr></thead><tbody>{caseData.areas.map((from) => <tr key={from}><th>{from}</th>{caseData.areas.map((to) => <td className={from === to ? styles.matrixSame : ""} key={to}>{caseData.travel_minutes[from][to]}<small>min</small></td>)}</tr>)}</tbody></table></div></div>}
+        </section>
+      )}
+
+      {activeView === "analytics" && (
+        <section className={styles.analyticsView}>
+          <div className={styles.viewTitle}>
+            <div><span className={styles.kicker}>Working plan / {formatDate(caseData.today)}</span><h1>Dispatch analytics</h1><p>Coverage, capacity, travel, and workload for the selected operating date.</p></div>
+            <button className={styles.primaryButton} type="button" onClick={() => openView("plan")}>Open timeline <ArrowRight size={16} /></button>
+          </div>
+
+          <div className={styles.analyticsMetrics}>
+            <article><span><BadgeCheck size={18} /></span><div><small>Job coverage</small><strong>{analytics.coverage}%</strong><p>{plan.stats.jobs_scheduled} of {caseData.jobs.length} scheduled</p></div></article>
+            <article><span><Gauge size={18} /></span><div><small>Team utilization</small><strong>{analytics.utilization}%</strong><p>Service and travel vs. active shifts</p></div></article>
+            <article><span><CarFront size={18} /></span><div><small>Travel per job</small><strong>{analytics.travelPerJob}m</strong><p>{plan.stats.total_travel_minutes} minutes total</p></div></article>
+            <article><span><TrendingDown size={18} /></span><div><small>Baseline difference</small><strong>{Math.abs(analytics.travelSaved)}m</strong><p>{analytics.travelSaved >= 0 ? "Less travel than first-fit" : "More travel than first-fit"}</p></div></article>
+          </div>
+
+          <div className={styles.analyticsSplit}>
+            <section className={styles.analyticsPanel}>
+              <div className={styles.analyticsHeader}><span><MapPinned size={18} /></span><div><h2>Demand by area</h2><p>Scheduled share of jobs received.</p></div></div>
+              <div className={styles.areaRows}>{analytics.areaRows.map((item) => <div key={item.area}><span><strong>{item.area}</strong><small>{item.scheduled}/{item.total} scheduled</small></span><div><i style={{ width: `${(item.total / analytics.maxAreaJobs) * 100}%` }}><b style={{ width: `${item.total ? (item.scheduled / item.total) * 100 : 0}%` }} /></i></div></div>)}</div>
+            </section>
+
+            <section className={styles.analyticsPanel}>
+              <div className={styles.analyticsHeader}><span><Wrench size={18} /></span><div><h2>Skill capacity</h2><p>Demand compared with active coverage.</p></div></div>
+              <div className={styles.skillRows}>{analytics.skillRows.map((item) => <div key={item.skill}><span className={`${styles.skillMark} ${styles[`skill_${item.skill}`]}`}>{skillIcon(item.skill, 15)}</span><span><strong>{formatSkill(item.skill)}</strong><small>{item.jobs} jobs</small></span><b>{item.technicians}</b><em>technicians</em></div>)}</div>
+            </section>
+          </div>
+
+          <section className={styles.workloadPanel}>
+            <div className={styles.analyticsHeader}><span><BarChart3 size={18} /></span><div><h2>Technician workload</h2><p>Working-plan utilization, job count, and travel.</p></div></div>
+            <div className={styles.workloadRows}>{analytics.workloads.map((item) => <div key={item.technician.id}><span><strong>{item.technician.name}</strong><small>{item.technician.id} / {item.technician.status === "sick" ? "Unavailable" : item.technician.shift_start + "-" + item.technician.shift_end}</small></span><div><i style={{ width: `${item.utilization}%` }} /></div><b>{item.utilization}%</b><em>{item.jobs} jobs / {item.travel}m travel</em></div>)}</div>
+          </section>
         </section>
       )}
 
@@ -757,7 +864,7 @@ export default function Dispatcher({
         <div className={styles.drawerBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setSetupModal(null); }}>
           <form className={styles.setupModal} onSubmit={addTechnician} role="dialog" aria-modal="true" aria-labelledby="add-technician-title">
             <div className={styles.drawerHeader}><div><span className={styles.setupModalIcon}><UsersRound size={19} /></span><span><small>New team member</small><h2 id="add-technician-title">Add technician</h2></span></div><button className={styles.iconButton} type="button" title="Close" aria-label="Close add technician" onClick={() => setSetupModal(null)}><X size={18} /></button></div>
-            <div className={styles.formGrid}><label className={styles.fullField}><span>Name</span><input name="name" placeholder="Technician name" required autoFocus /></label><label><span>Home area</span><select name="home_area" required>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></label><fieldset className={styles.skillOptions}><legend>Skills</legend><label><input type="checkbox" name="skills" value="ac" defaultChecked /><Snowflake size={15} /> AC</label><label><input type="checkbox" name="skills" value="plumbing" /><Droplets size={15} /> Plumbing</label></fieldset><label><span>Shift start</span><input type="time" name="shift_start" defaultValue="09:00" required /></label><label><span>Shift end</span><input type="time" name="shift_end" defaultValue="18:00" required /></label></div>
+            <div className={styles.formGrid}><label className={styles.fullField}><span>Name</span><input name="name" placeholder="Technician name" required autoFocus /></label><label><span>Home area</span><select name="home_area" required>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></label><fieldset className={styles.skillOptions}><legend>Skills</legend><label><input type="checkbox" name="skills" value="ac" defaultChecked /><Snowflake size={15} /> AC</label><label><input type="checkbox" name="skills" value="plumbing" /><Droplets size={15} /> Plumbing</label><label><input type="checkbox" name="skills" value="electrical" /><Zap size={15} /> Electrical</label><label><input type="checkbox" name="skills" value="gas_line" /><Flame size={15} /> Gas line</label></fieldset><label><span>Shift start</span><input type="time" name="shift_start" defaultValue="09:00" required /></label><label><span>Shift end</span><input type="time" name="shift_end" defaultValue="18:00" required /></label></div>
             <div className={styles.modalActions}><button className={styles.secondaryButton} type="button" onClick={() => setSetupModal(null)}>Cancel</button><button className={styles.primaryButton} type="submit"><Plus size={16} /> Add technician</button></div>
           </form>
         </div>
@@ -767,7 +874,7 @@ export default function Dispatcher({
         <div className={styles.drawerBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setSetupModal(null); }}>
           <form className={styles.setupModal} onSubmit={addJob} role="dialog" aria-modal="true" aria-labelledby="add-job-title">
             <div className={styles.drawerHeader}><div><span className={styles.setupModalIcon}><Wrench size={19} /></span><span><small>New service request</small><h2 id="add-job-title">Add job</h2></span></div><button className={styles.iconButton} type="button" title="Close" aria-label="Close add job" onClick={() => setSetupModal(null)}><X size={18} /></button></div>
-            <div className={styles.formGrid}><label><span>Area</span><select name="area" required>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></label><label><span>Required skill</span><select name="skill" required><option value="ac">AC</option><option value="plumbing">Plumbing</option></select></label><label><span>Duration</span><select name="duration" defaultValue="60"><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option><option value="90">90 min</option><option value="120">120 min</option></select></label><span /><label><span>Window start</span><input type="time" name="window_start" defaultValue="09:00" required /></label><label><span>Window end</span><input type="time" name="window_end" defaultValue="12:00" required /></label></div>
+            <div className={styles.formGrid}><label><span>Area</span><select name="area" required>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></label><label><span>Required skill</span><select name="skill" required><option value="ac">AC</option><option value="plumbing">Plumbing</option><option value="electrical">Electrical</option><option value="gas_line">Gas line</option></select></label><label><span>Duration</span><select name="duration" defaultValue="60"><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option><option value="90">90 min</option><option value="120">120 min</option><option value="150">150 min</option></select></label><span /><label><span>Window start</span><input type="time" name="window_start" defaultValue="09:00" required /></label><label><span>Window end</span><input type="time" name="window_end" defaultValue="12:00" required /></label></div>
             <div className={styles.modalActions}><button className={styles.secondaryButton} type="button" onClick={() => setSetupModal(null)}>Cancel</button><button className={styles.primaryButton} type="submit"><Plus size={16} /> Add job</button></div>
           </form>
         </div>

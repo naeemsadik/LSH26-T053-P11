@@ -45,13 +45,13 @@ test("dispatcher plan renders and rejects an invalid move", async ({ page }) => 
   expect(errors).toEqual([]);
 });
 
-test("setup, matrix, comparison, and case switching work", async ({ page }) => {
+test("direct setup navigation, matrix, comparison, and case switching work", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 850 });
   await page.goto("/");
   await expect(page.locator("html")).toHaveAttribute("data-routeboard-ready", "true");
 
-  await page.getByRole("button", { name: "Setup" }).click();
-  await expect(page.getByRole("heading", { name: "Case setup" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Data setup views" }).getByRole("button", { name: /^Technicians/ }).click();
+  await expect(page.getByRole("heading", { name: "Technicians", level: 1 })).toBeVisible();
   await expect(page).toHaveURL(/#setup\/technicians$/);
   await expect(page.locator("tbody tr")).toHaveCount(12);
   await page.getByLabel("T01 name").fill("Updated technician");
@@ -61,7 +61,7 @@ test("setup, matrix, comparison, and case switching work", async ({ page }) => {
   await page.getByRole("dialog", { name: "Add technician" }).getByRole("button", { name: "Add technician", exact: true }).click();
   await expect(page.getByLabel("T13 name")).toHaveValue("New field technician");
 
-  await page.getByRole("button", { name: /Jobs/ }).click();
+  await page.getByRole("navigation", { name: "Data setup views" }).getByRole("button", { name: /^Jobs/ }).click();
   await expect(page).toHaveURL(/#setup\/jobs$/);
   await expect(page.getByLabel("Search jobs")).toBeVisible();
   await page.getByLabel("Search jobs").fill("gas line");
@@ -71,9 +71,9 @@ test("setup, matrix, comparison, and case switching work", async ({ page }) => {
   await page.getByRole("dialog", { name: "Add job" }).getByRole("button", { name: "Add job", exact: true }).click();
   await expect(page.getByText("J38", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: /Travel times/ }).click();
+  await page.getByRole("navigation", { name: "Data setup views" }).getByRole("button", { name: /^Travel times/ }).click();
   await expect(page).toHaveURL(/#setup\/matrix$/);
-  await expect(page.getByRole("heading", { name: "Travel times" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Travel times", level: 1 })).toBeVisible();
   await page.getByLabel("From area").selectOption("Banani");
   await page.getByLabel("To area").selectOption("Bashundhara");
   await page.getByLabel("Travel minutes").fill("21");
@@ -81,12 +81,12 @@ test("setup, matrix, comparison, and case switching work", async ({ page }) => {
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Travel times" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Travel times", level: 1 })).toBeVisible();
   await expect(page).toHaveURL(/#setup\/matrix$/);
   await page.getByLabel("From area").selectOption("Banani");
   await page.getByLabel("To area").selectOption("Bashundhara");
   await expect(page.getByLabel("Travel minutes")).toHaveValue("21");
-  await page.getByRole("button", { name: /Technicians/ }).click();
+  await page.getByRole("navigation", { name: "Data setup views" }).getByRole("button", { name: /^Technicians/ }).click();
   await expect(page.getByLabel("T13 name")).toHaveValue("New field technician");
 
   await page.getByRole("button", { name: "Compare" }).click();
@@ -100,6 +100,21 @@ test("setup, matrix, comparison, and case switching work", async ({ page }) => {
   await expect(page.locator("[class*='technicianRow']")).toHaveCount(15);
 });
 
+test("analytics exposes working-plan operations data", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-routeboard-ready", "true");
+
+  await page.getByRole("button", { name: "Analytics" }).click();
+  await expect(page).toHaveURL(/#analytics$/);
+  await expect(page.getByRole("heading", { name: "Dispatch analytics" })).toBeVisible();
+  await expect(page.getByText("Job coverage", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Demand by area" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Skill capacity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Technician workload" })).toBeVisible();
+  await page.screenshot({ path: "test-results/routeboard-analytics.png", fullPage: true });
+});
+
 test("busy-day navigation remains usable on a narrow screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
@@ -110,8 +125,9 @@ test("busy-day navigation remains usable on a narrow screen", async ({ page }) =
   await expect(page.getByRole("navigation", { name: "Workspace views" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 
-  await page.getByRole("button", { name: "Setup" }).click();
-  await expect(page.getByRole("heading", { name: "Case setup" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Data setup views" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Data setup views" }).getByRole("button", { name: /^Technicians/ }).click();
+  await expect(page.getByRole("heading", { name: "Technicians", level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save and update plan" })).toBeVisible();
   await page.screenshot({ path: "test-results/routeboard-mobile.png", fullPage: true });
 });

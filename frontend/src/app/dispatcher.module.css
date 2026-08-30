@@ -20,7 +20,7 @@
     "sidebar topbar"
     "sidebar workspace";
   grid-template-columns: 200px minmax(0, 1fr);
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-rows: 78px minmax(0, 1fr);
   overflow: hidden;
   background: var(--surface);
 }
@@ -38,7 +38,7 @@
 
 .brand {
   width: 100%;
-  min-height: 64px;
+  min-height: 78px;
   display: flex;
   align-items: center;
   gap: 11px;
@@ -86,13 +86,15 @@
   text-transform: uppercase;
 }
 
-.mainNav {
+.mainNav,
+.dataNav {
   display: grid;
   gap: 3px;
   padding: 0 10px;
 }
 
-.mainNav button {
+.mainNav button,
+.dataNav button {
   width: 100%;
   height: 42px;
   display: flex;
@@ -109,13 +111,38 @@
 }
 
 .mainNav button:hover,
-.mainNav .navActive {
+.dataNav button:hover,
+.mainNav .navActive,
+.dataNav .navActive {
   color: #fff;
   background: var(--ink-2);
 }
 
-.mainNav .navActive svg {
+.mainNav .navActive svg,
+.dataNav .navActive svg {
   color: #7fa5ff;
+}
+
+.dataNav button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dataNav button small {
+  min-width: 22px;
+  margin-left: auto;
+  padding: 3px 5px;
+  color: #83918a;
+  background: #202c28;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  text-align: center;
+}
+
+.dataNav .navActive small {
+  color: #dce6ff;
+  background: #34433d;
 }
 
 .sidebarActions {
@@ -191,7 +218,6 @@
   background: #fff;
 }
 
-.date,
 .apiStatus {
   display: inline-flex;
   align-items: center;
@@ -201,12 +227,31 @@
   white-space: nowrap;
 }
 
-.date > span {
-  display: grid;
-  gap: 2px;
+.dateContext {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.date small {
+.dateIcon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: #3e6253;
+  background: #edf2ee;
+  border-radius: 5px;
+}
+
+.datePrimary,
+.dateSummary {
+  display: grid;
+  gap: 3px;
+}
+
+.datePrimary small,
+.dateSummary small {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 7px;
@@ -215,10 +260,26 @@
   text-transform: uppercase;
 }
 
-.date strong {
+.datePrimary strong {
   color: var(--ink);
-  font-size: 10px;
+  font-family: var(--font-display);
+  font-size: 19px;
   line-height: 1;
+}
+
+.dateSummary {
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+
+.dateSummary b {
+  color: #355547;
+  font-size: 10px;
+}
+
+.dateSummary small {
+  line-height: 1.2;
+  text-transform: none;
 }
 
 .apiStatus {
@@ -502,8 +563,7 @@
   justify-content: flex-end;
 }
 
-.sourceToggle,
-.setupTabs {
+.sourceToggle {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -1067,6 +1127,7 @@
 }
 
 .setupView,
+.analyticsView,
 .compareView {
   min-height: 0;
   flex: 1;
@@ -1082,43 +1143,6 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-}
-
-.setupTabs {
-  width: fit-content;
-  max-width: 1450px;
-  margin: 0 auto 12px;
-}
-
-.setupTabs button {
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 12px;
-  color: var(--muted);
-  background: transparent;
-  border: 0;
-  border-radius: 4px;
-  font-size: 9px;
-  font-weight: 700;
-}
-
-.setupTabs button span {
-  min-width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  background: #d6ddd7;
-  border-radius: 9px;
-  font-family: var(--font-mono);
-  font-size: 7px;
-}
-
-.setupTabs .setupTabActive {
-  color: var(--ink);
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(23, 32, 30, 0.09);
 }
 
 .dataPanel,
@@ -1321,6 +1345,229 @@
   align-self: flex-end;
   margin-bottom: 10px;
   color: var(--muted);
+}
+
+.analyticsView {
+  padding-top: 27px;
+}
+
+.analyticsView .viewTitle,
+.analyticsMetrics,
+.analyticsSplit,
+.workloadPanel {
+  max-width: 1180px;
+}
+
+.analyticsMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 8px auto 16px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.analyticsMetrics article {
+  min-height: 110px;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 20px;
+  border-right: 1px solid var(--line);
+}
+
+.analyticsMetrics article:last-child {
+  border-right: 0;
+}
+
+.analyticsMetrics article > span,
+.analyticsHeader > span {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: #31624f;
+  background: #eaf1ec;
+  border-radius: 5px;
+}
+
+.analyticsMetrics article:nth-child(2) > span {
+  color: #365d99;
+  background: #eaf0fb;
+}
+
+.analyticsMetrics article:nth-child(3) > span {
+  color: #8a631d;
+  background: #f7f0df;
+}
+
+.analyticsMetrics article:nth-child(4) > span {
+  color: #38716f;
+  background: #e5f2f1;
+}
+
+.analyticsMetrics article > div {
+  min-width: 0;
+  display: grid;
+}
+
+.analyticsMetrics small,
+.analyticsHeader p,
+.areaRows small,
+.skillRows small,
+.workloadRows small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.analyticsMetrics strong {
+  margin-top: 2px;
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.analyticsMetrics p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.analyticsSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(310px, 0.75fr);
+  gap: 16px;
+  margin: 0 auto 16px;
+}
+
+.analyticsPanel,
+.workloadPanel {
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.workloadPanel {
+  margin: 0 auto;
+}
+
+.analyticsHeader {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.analyticsHeader h2 {
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.analyticsHeader p {
+  margin-top: 4px;
+}
+
+.areaRows,
+.skillRows,
+.workloadRows {
+  padding: 8px 18px 16px;
+}
+
+.areaRows > div {
+  min-height: 45px;
+  display: grid;
+  grid-template-columns: 130px minmax(160px, 1fr);
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #e8ece9;
+}
+
+.areaRows > div:last-child,
+.skillRows > div:last-child,
+.workloadRows > div:last-child {
+  border-bottom: 0;
+}
+
+.areaRows span,
+.skillRows > div > span:nth-child(2),
+.workloadRows > div > span {
+  display: grid;
+  gap: 2px;
+}
+
+.areaRows strong,
+.skillRows strong,
+.workloadRows strong,
+.workloadRows b {
+  font-size: 9px;
+}
+
+.areaRows > div > div,
+.workloadRows > div > div {
+  height: 9px;
+  overflow: hidden;
+  background: #e7ece8;
+  border-radius: 4px;
+}
+
+.areaRows i {
+  display: block;
+  height: 100%;
+  background: #b9c7c0;
+  border-radius: 4px;
+}
+
+.areaRows b {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  border-radius: 4px;
+}
+
+.skillRows > div {
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: 30px minmax(90px, 1fr) 28px 58px;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid #e8ece9;
+}
+
+.skillRows b {
+  font-family: var(--font-display);
+  font-size: 19px;
+  text-align: right;
+}
+
+.skillRows em,
+.workloadRows em {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-style: normal;
+}
+
+.workloadRows > div {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 180px minmax(190px, 1fr) 46px 130px;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #e8ece9;
+}
+
+.workloadRows > div > div i {
+  display: block;
+  height: 100%;
+  background: var(--teal);
+  border-radius: 4px;
 }
 
 .compareView {
@@ -1742,7 +1989,8 @@
     grid-template-areas:
       "brand footer"
       "actions actions"
-      "nav nav";
+      "nav nav"
+      "data data";
     grid-template-columns: minmax(0, 1fr) auto;
     border-right: 0;
     border-bottom: 1px solid #2e3a36;
@@ -1759,18 +2007,29 @@
   .brand > strong { font-size: 18px; }
   .sidebarLabel { display: none; }
 
-  .mainNav {
+  .mainNav,
+  .dataNav {
     grid-area: nav;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    padding: 8px 10px 10px;
+    padding: 8px 10px;
     border-top: 1px solid #2e3a36;
   }
 
-  .mainNav button {
+  .dataNav {
+    grid-area: data;
+    padding-top: 0;
+    padding-bottom: 10px;
+    border-top: 0;
+  }
+
+  .mainNav button,
+  .dataNav button {
     height: 38px;
     justify-content: center;
   }
+
+  .dataNav button small { display: none; }
 
   .sidebarActions {
     grid-area: actions;
@@ -1788,13 +2047,15 @@
   }
 
   .topbar {
-    min-height: 58px;
+    min-height: 112px;
     flex-wrap: wrap;
     gap: 8px;
     padding: 9px 12px;
   }
 
-  .caseSelect { min-width: 0; }
+  .dateContext { width: 100%; }
+  .dateSummary { margin-left: auto; }
+  .caseSelect { width: 100%; min-width: 0; }
   .caseSelect select { width: 100%; }
   .workspace { overflow: visible; }
 
@@ -1833,6 +2094,7 @@
   }
 
   .setupView,
+  .analyticsView,
   .compareView { padding: 18px 12px; }
 
   .viewTitle {
@@ -1842,11 +2104,6 @@
   }
 
   .viewTitle > div:last-child { justify-content: flex-start; }
-
-  .setupTabs {
-    width: 100%;
-    overflow-x: auto;
-  }
 
   .dataToolbar {
     align-items: flex-start;
@@ -1860,6 +2117,12 @@
   }
 
   .searchField { flex: 1; }
+  .analyticsMetrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analyticsMetrics article:nth-child(2) { border-right: 0; }
+  .analyticsMetrics article:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+  .analyticsSplit { grid-template-columns: 1fr; }
+  .workloadRows > div { grid-template-columns: 130px minmax(100px, 1fr) 42px; }
+  .workloadRows em { display: none; }
   .comparisonGrid { grid-template-columns: 1fr; }
   .emergencyModal,
   .setupModal,
