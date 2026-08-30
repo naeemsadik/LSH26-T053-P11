@@ -24,7 +24,6 @@ Material frameworks, libraries, fonts, icons, assets, build tools, and published
 | PostgreSQL container | 17-alpine / https://hub.docker.com/_/postgres | PostgreSQL Licence | Local Docker Compose database |
 | Node.js container | 22-alpine / https://hub.docker.com/_/node | Node.js licence and bundled notices | Frontend Docker build and runtime |
 | Eclipse Temurin and Maven containers | Java 21 and Maven 3.9.9 / https://hub.docker.com/_/maven | GPL-2.0 with Classpath Exception and Apache-2.0 | Backend Docker build and Java runtime |
-| P11 public route and shift fixture | `Data/P11_route_shift_public.json` | Hackathon-provided material governed by the event rules | Published sample cases, browser-mode data, planner tests, and empty-database backend seed |
 
 No third-party starter, template, UI kit, stock image, or external illustration asset was used.
 
@@ -33,6 +32,7 @@ No third-party starter, template, UI kit, stock image, or external illustration 
 | Tool | Used for | How output was verified |
 |---|---|---|
 | OpenAI Codex | Frontend and backend implementation support, UI refinement, API integration, deployment configuration, tests, debugging, and documentation | Frontend output was checked with ESLint, TypeScript, Playwright browser/API tests across all 25 published cases, responsive screenshots, and the Next.js production build. Backend changes were reviewed against the API contracts and Spring test suite, and the copied seed dataset was parsed and checked for complete area and skill enum coverage. |
+| Google Antigravity | Initial Spring Boot backend implementation, assignment and local-search logic, persistence services, backend tests, and supporting documentation | Output was reviewed against the P11 requirements, checked by the Spring unit and acceptance test suite, and compiled successfully during the Maven-based Render Docker build. |
 
 ## Original-work statement
 

@@ -90,6 +90,11 @@
       "tool": "OpenAI Codex",
       "used_for": "Frontend and backend implementation support, UI refinement, API integration, deployment configuration, tests, debugging, and documentation.",
       "how_output_was_verified": "Frontend output was checked with ESLint, TypeScript, six Playwright browser/API tests covering all 25 published cases, responsive screenshots, and the Next.js production build. Backend changes were checked against API contracts and the Spring test suite structure; the seed JSON was parsed and verified against every area and skill enum."
+    },
+    {
+      "tool": "Google Antigravity",
+      "used_for": "Initial Spring Boot backend implementation, assignment and local-search logic, persistence services, backend tests, and supporting documentation.",
+      "how_output_was_verified": "Output was reviewed against the P11 requirements, checked by the Spring unit and acceptance test suite, and compiled successfully during the Maven-based Render Docker build."
     }
   ],
   "licenses_file": "LICENSES.md",
