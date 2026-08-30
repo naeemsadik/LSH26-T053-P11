@@ -33,13 +33,12 @@ git submodule update --init --recursive
 
 ## Render deployment
 
-Create one Blueprint from this repository. Its `render.yaml` provisions
-PostgreSQL, builds `routeboard-api` from the separate backend repository, and
-builds the `routeboard` frontend from this repository.
+1. Create a Blueprint from the [backend repository](https://github.com/naeemsadik/LSH26-T053-P11-Backend). It creates `routeboard-api` and `routeboard-db`.
+2. Create a Blueprint from this repository. It creates the `routeboard` frontend and connects to the existing API over Render's private network.
 
-Do not create the backend as a standalone Web Service without attaching its
-PostgreSQL database. The frontend calls Spring only through server-side Next.js
-route handlers, so no browser CORS configuration is required.
+Do not create the backend as a standalone Web Service. Both Blueprints must be
+in the same Render workspace. The frontend calls Spring only through server-side
+Next.js route handlers, so no browser CORS configuration is required.
 
 For a manually created frontend service, build the root `Dockerfile` and set
 `BACKEND_URL` to the backend's public URL.
