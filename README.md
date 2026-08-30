@@ -11,6 +11,63 @@ The `backend` entry in this repository is a Git submodule pointing to the
 standalone backend repository. The Spring source and its deployment history
 are maintained there, not duplicated here.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    User[Dispatcher] -->|Plan, setup, analysis| UI[Next.js Routeboard UI]
+
+    subgraph Frontend[Frontend service]
+        UI --> Routes[Next.js API route handlers]
+        Routes --> Adapter[Backend contract adapter]
+        UI -. Browser fallback .-> Planner[TypeScript planner]
+        Planner --> Fixture[P11 public JSON fixture]
+        UI -. Session persistence .-> BrowserStore[(Browser localStorage)]
+    end
+
+    Adapter -->|Server-side HTTP and JSON| API[Spring Boot API]
+
+    subgraph Backend[Standalone backend service]
+        API --> Validator[Hard-rule validator]
+        API --> Engine[Greedy insertion and local search]
+        Engine --> Validator
+        API --> Repositories[Spring Data JPA]
+        Repositories --> Database[(PostgreSQL)]
+        SeedCopy[Published fixture copy] --> Seeder[Empty-database seeder]
+        Seeder --> Repositories
+    end
+```
+
+## Data flow diagram
+
+```mermaid
+flowchart LR
+    Dispatcher[External entity: Dispatcher]
+    P1((1.0 Maintain technicians, jobs, and travel))
+    P2((2.0 Generate route plan))
+    P3((3.0 Validate manual move))
+    P4((4.0 Replan disruption))
+    P5((5.0 Present timeline and analytics))
+    D1[(D1 PostgreSQL)]
+    D2[(D2 Public case fixture)]
+    D3[(D3 Browser workspace)]
+
+    Dispatcher -->|Setup changes| P1
+    P1 -->|Persisted setup| D1
+    P1 -. Standalone save .-> D3
+    D1 -->|Skills, shifts, windows, matrix| P2
+    D2 -. Fallback case data .-> P2
+    D3 -. Saved browser setup .-> P2
+    P2 -->|Assignments, score, reasons| P5
+    Dispatcher -->|Dragged job and target| P3
+    P3 -->|Read current plan and rules| D1
+    P3 -->|Valid move or broken rule| P5
+    Dispatcher -->|Emergency job or sick technician| P4
+    P4 -->|Read and update active plan| D1
+    P4 -->|Replanned assignments| P5
+    P5 -->|Timeline, alerts, comparisons, analytics| Dispatcher
+```
+
 ## Local full stack
 
 Clone both repositories and start the containers:
