@@ -1,4 +1,14 @@
 import { getCase } from "@/lib/dataset";
+import {
+  backendEnabled,
+  backendErrorResponse,
+  backendRequest,
+  getBackendContext,
+  movePosition,
+  normalizePlan,
+  toBackendJob,
+  type BackendPlanResponse,
+} from "@/lib/backend";
 import { generatePlan, moveJob, validateMove } from "@/lib/planner";
 import type { CaseData, Job, Plan } from "@/lib/types";
 
@@ -38,6 +48,56 @@ export async function POST(
   }
 
   const payload = body as Record<string, unknown>;
+
+  if (backendEnabled()) {
+    try {
+      if (action === "generate") {
+        const response = await backendRequest<BackendPlanResponse>("/plan/generate", { method: "POST" });
+        return Response.json(normalizePlan(response, await getBackendContext()));
+      }
+
+      if (action === "replan-active") {
+        if (!isJob(payload.job)) return Response.json({ error: "Emergency job is incomplete." }, { status: 400 });
+        await backendRequest("/jobs", { method: "POST", body: JSON.stringify(toBackendJob(payload.job)) });
+        const response = await backendRequest<BackendPlanResponse>("/plan/replan-active", { method: "POST" });
+        return Response.json(normalizePlan(response, await getBackendContext()));
+      }
+
+      if (!isPlan(payload.plan)) return Response.json({ error: "Current plan is required." }, { status: 400 });
+      const jobId = typeof payload.job_id === "string" ? payload.job_id : "";
+      const technicianId = typeof payload.to_technician === "string" ? payload.to_technician : "";
+      const desiredStart = typeof payload.desired_start === "string" ? payload.desired_start : "";
+      if (!jobId || !technicianId || !/^\d{2}:\d{2}$/.test(desiredStart)) {
+        return Response.json({ error: "Job, technician, and drop time are required." }, { status: 400 });
+      }
+      const move = {
+        job_id: jobId,
+        target_technician_id: technicianId,
+        position: movePosition(payload.plan, jobId, technicianId, desiredStart),
+      };
+
+      if (action === "validate-move") {
+        const result = await backendRequest<{ valid: boolean; broken_rule?: string; reason?: string }>("/plan/validate-move", {
+          method: "POST",
+          body: JSON.stringify(move),
+        });
+        return Response.json({ valid: result.valid, reason_code: result.broken_rule, reason_text: result.reason });
+      }
+
+      if (action === "move") {
+        const response = await backendRequest<BackendPlanResponse>("/plan/move", {
+          method: "POST",
+          body: JSON.stringify(move),
+        });
+        return Response.json(normalizePlan(response, await getBackendContext()));
+      }
+
+      return Response.json({ error: `Unknown plan action: ${action}.` }, { status: 404 });
+    } catch (error) {
+      return backendErrorResponse(error);
+    }
+  }
+
   const caseId = typeof payload.case_id === "string" ? payload.case_id : "";
   const caseData = isCaseData(payload.case_data) ? payload.case_data : getCase(caseId);
   if (!caseData) {

@@ -60,6 +60,14 @@ public class JobService {
         return toModel(saved);
     }
 
+    public Job replaceJob(String id, Job job) {
+        if (!jobRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Job with ID '" + id + "' not found");
+        }
+        job.setId(id);
+        return saveJob(job);
+    }
+
     public void updateJobStatus(String id, JobStatus status) {
         JobEntity entity = jobRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Job with ID '" + id + "' not found"));

@@ -1,0 +1,10 @@
+.DS_Store
+.idea/
+**/.idea/
+**/target/
+**/.next/
+**/node_modules/
+**/test-results/
+**/playwright-report/
+.env*
+*.log

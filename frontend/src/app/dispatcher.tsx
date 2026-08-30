@@ -49,7 +49,7 @@ type View = "plan" | "setup" | "compare";
 type SetupTab = "technicians" | "jobs" | "matrix";
 type TimelineSource = "generated" | "working";
 
-const API_ROOT = (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/$/, "");
+const API_ROOT = "/api";
 const DAY_START = 8 * 60;
 const DAY_END = 21 * 60;
 const DAY_SPAN = DAY_END - DAY_START;
@@ -246,7 +246,7 @@ function TimelineBoard({
   );
 }
 
-export default function Dispatcher({ initialCase, initialPlan, cases }: { initialCase: CaseData; initialPlan: Plan; cases: CaseSummary[] }) {
+export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }: { initialCase: CaseData; initialPlan: Plan; cases: CaseSummary[]; apiMode: "Live API" | "Demo API" }) {
   const [activeView, setActiveView] = useState<View>("plan");
   const [setupTab, setSetupTab] = useState<SetupTab>("technicians");
   const [caseData, setCaseData] = useState(initialCase);
@@ -423,7 +423,7 @@ export default function Dispatcher({ initialCase, initialPlan, cases }: { initia
         method: "POST",
         body: JSON.stringify(caseData),
       });
-      notify("Setup saved for this dispatcher session.");
+      notify(apiMode === "Live API" ? "Setup saved to the backend." : "Setup saved for this dispatcher session.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Setup could not be saved.");
     } finally {
@@ -498,7 +498,7 @@ export default function Dispatcher({ initialCase, initialPlan, cases }: { initia
         <div className={styles.headerActions}>
           <label className={styles.caseSelect}><span>Case</span><select value={caseData.case_id} onChange={(event) => selectCase(event.target.value)} disabled={!!busyAction}>{cases.map((item) => <option key={item.case_id} value={item.case_id}>{item.case_id} · {item.technicians} tech · {item.jobs} jobs</option>)}</select></label>
           <span className={styles.date}><CalendarDays size={15} />{formatDate(caseData.today)}</span>
-          <span className={styles.apiStatus}><i />Demo API</span>
+          <span className={styles.apiStatus}><i />{apiMode}</span>
           <button className={styles.emergencyButton} type="button" onClick={() => setShowEmergency(true)}><Siren size={17} /> Emergency job</button>
           <button className={styles.generateButton} type="button" onClick={() => generate()} disabled={!!busyAction}>{busyAction === "generate" ? <LoaderCircle className={styles.spinner} size={17} /> : <Route size={17} />} Generate plan</button>
         </div>

@@ -33,8 +33,22 @@ public class JobController {
     @PostMapping
     @Operation(summary = "Add a new job")
     public ResponseEntity<Job> createJob(@Valid @RequestBody CreateJobRequest request) {
-        Job job = Job.builder()
-                .id(request.getId())
+        Job job = toJob(request, request.getId());
+        Job saved = jobService.saveJob(job);
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    }
+
+    @PutMapping("/{id}")
+    @Operation(summary = "Replace an existing job")
+    public ResponseEntity<Job> replaceJob(
+            @PathVariable String id,
+            @Valid @RequestBody CreateJobRequest request) {
+        return ResponseEntity.ok(jobService.replaceJob(id, toJob(request, id)));
+    }
+
+    private Job toJob(CreateJobRequest request, String id) {
+        return Job.builder()
+                .id(id)
                 .area(request.getArea())
                 .requiredSkill(request.getRequiredSkill())
                 .durationMinutes(request.getDurationMinutes())
@@ -42,7 +56,5 @@ public class JobController {
                 .windowEnd(request.getWindowEnd())
                 .status(request.getStatus() != null ? request.getStatus() : JobStatus.PENDING)
                 .build();
-        Job saved = jobService.saveJob(job);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 }

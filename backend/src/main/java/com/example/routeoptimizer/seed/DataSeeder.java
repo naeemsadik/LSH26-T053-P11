@@ -25,9 +25,15 @@ public class DataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        seedTravelMatrix();
-        seedTechnicians();
-        seedJobs();
+        if (travelMatrixService.getTravelMatrix().getTravelTimes().isEmpty()) {
+            seedTravelMatrix();
+        }
+        if (technicianService.getAllTechnicians().isEmpty()) {
+            seedTechnicians();
+        }
+        if (jobService.getAllJobs().isEmpty()) {
+            seedJobs();
+        }
     }
 
     private void seedTravelMatrix() {
@@ -35,8 +41,6 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedTechnicians() {
-        technicianService.clearAll();
-
         // 12 Technicians with realistic schedules and skills across Dhaka zones
         createTech("T01", "Rahim Ahmed", Set.of(Skill.AC), "08:00", "16:00", Area.UTTARA);
         createTech("T02", "Karim Uddin", Set.of(Skill.AC), "08:00", "16:00", Area.MIRPUR);
@@ -68,8 +72,6 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedJobs() {
-        jobService.clearAll();
-
         // 30 Jobs with varying windows, skills, durations, and geographical distribution
         createJob("J01", Area.UTTARA, Skill.AC, 60, "08:30", "11:00");
         createJob("J02", Area.BANANI, Skill.AC, 45, "09:00", "11:30");

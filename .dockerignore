@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+**/.idea
+**/.next
+**/node_modules
+**/target
+**/test-results
+**/playwright-report
+.env*
+*.log
+.DS_Store

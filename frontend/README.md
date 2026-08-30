@@ -27,15 +27,13 @@ npx playwright install chromium
 
 ## Backend
 
-Without configuration, Next.js route handlers provide a deterministic demo API backed by `../Data/P11_route_shift_public.json`.
-
-Set `NEXT_PUBLIC_API_URL` to an external API root to use the companion backend. Expected paths:
+Set the server-only `BACKEND_URL` to the Spring API root. Without it, route handlers retain the public-data demo for standalone frontend development. Connected paths:
 
 - `POST /plan/generate`
 - `POST /plan/validate-move`
 - `POST /plan/move`
 - `POST /plan/replan-active`
-- `GET|POST /cases/:caseId`
+- `GET|POST /cases/:caseId` (Next.js adapter)
 - `POST /technicians/:id/sick`
 
-Demo setup edits persist for the current browser session only. Production persistence belongs to the companion backend.
+Use `docker compose up --build` from the repository root to run the connected stack.
