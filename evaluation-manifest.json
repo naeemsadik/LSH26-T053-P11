@@ -64,8 +64,8 @@
       ]
     },
     {
-      "registered_name": "Sajid",
-      "github_username": "",
+      "registered_name": "Yeamim Hossain Sajid",
+      "github_username": "yeamimhossainsajid",
       "major_contribution": "Initial Spring Boot backend, data models, controllers, assignment and local-search services, persistence layer, and backend test suite.",
       "evidence_paths_or_commits": [
         "backend/src/main/java/",
