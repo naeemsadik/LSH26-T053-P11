@@ -48,5 +48,5 @@ export async function POST(
       return backendErrorResponse(error);
     }
   }
-  return Response.json({ case_data: body, saved: true, persistence: "session" });
+  return Response.json({ case_data: body, saved: true, persistence: "browser" });
 }

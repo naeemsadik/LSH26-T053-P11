@@ -5,6 +5,7 @@ import com.example.routeoptimizer.exception.InvalidMoveException;
 import com.example.routeoptimizer.exception.ResourceNotFoundException;
 import com.example.routeoptimizer.exception.ValidationException;
 import com.example.routeoptimizer.model.*;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -21,6 +22,7 @@ public class PlanService {
     private final BaselinePlanner baselinePlanner;
     private final ScoringService scoringService;
     private final UnassignedReasonService unassignedReasonService;
+    private final PlanStateStore planStateStore;
 
     private Plan currentPlan = new Plan();
     private List<UnassignedEntry> currentUnassigned = new ArrayList<>();
@@ -33,7 +35,8 @@ public class PlanService {
             AssignmentEngine assignmentEngine,
             BaselinePlanner baselinePlanner,
             ScoringService scoringService,
-            UnassignedReasonService unassignedReasonService) {
+            UnassignedReasonService unassignedReasonService,
+            PlanStateStore planStateStore) {
         this.technicianService = technicianService;
         this.jobService = jobService;
         this.scheduleValidator = scheduleValidator;
@@ -41,6 +44,30 @@ public class PlanService {
         this.baselinePlanner = baselinePlanner;
         this.scoringService = scoringService;
         this.unassignedReasonService = unassignedReasonService;
+        this.planStateStore = planStateStore;
+    }
+
+    @PostConstruct
+    void restoreSavedPlan() {
+        planStateStore.load().ifPresent(saved -> {
+            currentPlan = saved.plan();
+            currentUnassigned = new ArrayList<>(saved.unassigned());
+            technicianJobsMap.clear();
+
+            for (Technician technician : technicianService.getAllTechnicians()) {
+                technicianJobsMap.put(technician.getId(), new ArrayList<>());
+            }
+            for (TechnicianRoute route : currentPlan.getTechnicianRoutes()) {
+                List<Job> jobs = technicianJobsMap.computeIfAbsent(route.getTechnicianId(), key -> new ArrayList<>());
+                for (Stop stop : route.getOrderedStops()) {
+                    try {
+                        jobs.add(jobService.getJobById(stop.getJobId()));
+                    } catch (ResourceNotFoundException ignored) {
+                        // The plan can be regenerated after an input record is removed.
+                    }
+                }
+            }
+        });
     }
 
     public synchronized GeneratePlanResponse generatePlan() {
@@ -84,6 +111,7 @@ public class PlanService {
 
         this.currentPlan = response.getPlan();
         this.currentUnassigned = new ArrayList<>(response.getUnassigned());
+        persistCurrentPlan();
 
         return response;
     }
@@ -149,6 +177,7 @@ public class PlanService {
         jobService.updateJobStatus(job.getId(), JobStatus.ASSIGNED);
 
         recalculatePlanFromMap();
+        persistCurrentPlan();
 
         List<Job> allJobs = jobService.getAllJobs();
         Score score = scoringService.calculateScore(currentPlan, allJobs, currentUnassigned.size());
@@ -209,6 +238,7 @@ public class PlanService {
         }
 
         recalculatePlanFromMap();
+        persistCurrentPlan();
         Score score = scoringService.calculateScore(currentPlan, allJobs, currentUnassigned.size());
 
         return GeneratePlanResponse.builder()
@@ -259,6 +289,7 @@ public class PlanService {
         }
 
         recalculatePlanFromMap();
+        persistCurrentPlan();
         Score score = scoringService.calculateScore(currentPlan, allJobs, currentUnassigned.size());
 
         return GeneratePlanResponse.builder()
@@ -297,6 +328,10 @@ public class PlanService {
                     .build());
         }
         return routes;
+    }
+
+    private void persistCurrentPlan() {
+        planStateStore.save(currentPlan, currentUnassigned);
     }
 
     private void verifyDataIntegrity(List<Job> allJobs, Set<String> assignedIds, Set<String> unassignedIds) {

@@ -18,7 +18,6 @@ import {
   LayoutDashboard,
   LoaderCircle,
   MapPin,
-  PencilLine,
   Plus,
   Route,
   Search,
@@ -48,17 +47,27 @@ import type {
 type View = "plan" | "setup" | "compare";
 type SetupTab = "technicians" | "jobs" | "matrix";
 type TimelineSource = "baseline" | "working";
+type SetupModal = "technician" | "job" | null;
 
 type SetupSaveResponse = {
   case_data: CaseData;
   saved: boolean;
-  persistence: "postgres" | "session";
+  persistence: "postgres" | "browser";
+};
+
+type PersistedWorkspace = {
+  caseData: CaseData;
+  plan: Plan;
+  baselinePlan: Plan;
+  hasUnsavedChanges: boolean;
+  planNeedsRefresh: boolean;
 };
 
 const API_ROOT = "/api";
 const DAY_START = 8 * 60;
 const DAY_END = 21 * 60;
 const DAY_SPAN = DAY_END - DAY_START;
+const BROWSER_STORAGE_KEY = "routeboard-workspace-v1";
 
 function toMinutes(value: string): number {
   const [hours, minutes] = value.split(":").map(Number);
@@ -116,6 +125,17 @@ function detectChangedRoutes(previous: Plan, next: Plan): Set<string> {
       return before !== after;
     }),
   );
+}
+
+function isPersistedWorkspace(value: unknown): value is PersistedWorkspace {
+  if (!value || typeof value !== "object") return false;
+  const workspace = value as Partial<PersistedWorkspace>;
+  return !!workspace.caseData?.case_id && !!workspace.plan?.assignments && !!workspace.baselinePlan?.assignments;
+}
+
+function nextRecordId(prefix: string, ids: string[]): string {
+  const next = Math.max(0, ...ids.map((id) => Number(id.match(/\d+$/)?.[0] ?? 0))) + 1;
+  return `${prefix}${String(next).padStart(2, "0")}`;
 }
 
 function Stat({ icon, label, value, note, alert }: { icon: React.ReactNode; label: string; value: string; note: string; alert?: boolean }) {
@@ -263,7 +283,7 @@ export default function Dispatcher({
   initialPlan: Plan;
   initialBaseline: Plan;
   cases: CaseSummary[];
-  apiMode: "Live API" | "Demo API";
+  apiMode: "Live API" | "Browser save";
 }) {
   const [activeView, setActiveView] = useState<View>("plan");
   const [setupTab, setSetupTab] = useState<SetupTab>("technicians");
@@ -279,14 +299,50 @@ export default function Dispatcher({
   const [validationError, setValidationError] = useState("");
   const [changedTechnicians, setChangedTechnicians] = useState<Set<string>>(new Set());
   const [showEmergency, setShowEmergency] = useState(false);
+  const [setupModal, setSetupModal] = useState<SetupModal>(null);
   const [jobSearch, setJobSearch] = useState("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [planNeedsRefresh, setPlanNeedsRefresh] = useState(false);
+  const [browserStorageReady, setBrowserStorageReady] = useState(false);
+  const [matrixFrom, setMatrixFrom] = useState(initialCase.areas[0]);
+  const [matrixTo, setMatrixTo] = useState(initialCase.areas[1] ?? initialCase.areas[0]);
 
   useEffect(() => {
-    document.documentElement.dataset.routeboardReady = "true";
-    return () => { delete document.documentElement.dataset.routeboardReady; };
-  }, []);
+    const restore = window.setTimeout(() => {
+      const [view, tab] = window.location.hash.slice(1).split("/");
+      if (view === "plan" || view === "setup" || view === "compare") setActiveView(view);
+      if (tab === "technicians" || tab === "jobs" || tab === "matrix") setSetupTab(tab);
+
+      if (apiMode === "Browser save") {
+        try {
+          const saved = JSON.parse(window.localStorage.getItem(BROWSER_STORAGE_KEY) ?? "null");
+          if (isPersistedWorkspace(saved)) {
+            setCaseData(saved.caseData);
+            setPlan(saved.plan);
+            setBaselinePlan(saved.baselinePlan);
+            setHasUnsavedChanges(saved.hasUnsavedChanges);
+            setPlanNeedsRefresh(saved.planNeedsRefresh);
+            setMatrixFrom(saved.caseData.areas[0]);
+            setMatrixTo(saved.caseData.areas[1] ?? saved.caseData.areas[0]);
+          }
+        } catch {
+          window.localStorage.removeItem(BROWSER_STORAGE_KEY);
+        }
+      }
+      setBrowserStorageReady(true);
+      document.documentElement.dataset.routeboardReady = "true";
+    }, 0);
+    return () => {
+      window.clearTimeout(restore);
+      delete document.documentElement.dataset.routeboardReady;
+    };
+  }, [apiMode]);
+
+  useEffect(() => {
+    if (apiMode !== "Browser save" || !browserStorageReady) return;
+    const workspace: PersistedWorkspace = { caseData, plan, baselinePlan, hasUnsavedChanges, planNeedsRefresh };
+    window.localStorage.setItem(BROWSER_STORAGE_KEY, JSON.stringify(workspace));
+  }, [apiMode, baselinePlan, browserStorageReady, caseData, hasUnsavedChanges, plan, planNeedsRefresh]);
 
   const displayPlan = timelineSource === "baseline" ? baselinePlan : plan;
   const filteredJobs = useMemo(() => {
@@ -304,6 +360,16 @@ export default function Dispatcher({
   const markSetupChanged = () => {
     setHasUnsavedChanges(true);
     setPlanNeedsRefresh(true);
+  };
+
+  const openView = (view: View, tab = setupTab) => {
+    setActiveView(view);
+    window.history.replaceState(null, "", view === "setup" ? `#setup/${tab}` : `#${view}`);
+  };
+
+  const openSetupTab = (tab: SetupTab) => {
+    setSetupTab(tab);
+    window.history.replaceState(null, "", `#setup/${tab}`);
   };
 
   const generate = async (nextCase = caseData) => {
@@ -346,6 +412,8 @@ export default function Dispatcher({
         body: JSON.stringify({ case_id: nextCase.case_id, case_data: nextCase }),
       });
       setCaseData(nextCase);
+      setMatrixFrom(nextCase.areas[0]);
+      setMatrixTo(nextCase.areas[1] ?? nextCase.areas[0]);
       setJobSearch("");
       setPlan(nextPlan);
       setBaselinePlan(nextBaseline);
@@ -475,10 +543,21 @@ export default function Dispatcher({
         method: "POST",
         body: JSON.stringify(caseData),
       });
+      const nextPlan = await requestJson<Plan>("/plan/generate", {
+        method: "POST",
+        body: JSON.stringify({ case_id: saved.case_data.case_id, case_data: saved.case_data }),
+      });
+      const nextBaseline = await requestJson<Plan>("/plan/baseline", {
+        method: "POST",
+        body: JSON.stringify({ case_id: saved.case_data.case_id, case_data: saved.case_data }),
+      });
       setCaseData(saved.case_data);
+      setPlan(nextPlan);
+      setBaselinePlan(nextBaseline);
+      setTimelineSource("working");
       setHasUnsavedChanges(false);
-      setPlanNeedsRefresh(planNeedsRefresh || hasUnsavedChanges);
-      notify(apiMode === "Live API" ? "Changes saved. Generate the plan to apply them." : "Changes saved for this session. Generate the plan to apply them.");
+      setPlanNeedsRefresh(false);
+      notify(apiMode === "Live API" ? "Setup and plan saved." : "Setup and plan saved in this browser.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Setup could not be saved.");
     } finally {
@@ -503,36 +582,56 @@ export default function Dispatcher({
     }));
   };
 
-  const addTechnician = () => {
+  const addTechnician = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    const name = String(values.get("name")).trim();
+    const skills = values.getAll("skills").map(String);
+    const shiftStart = String(values.get("shift_start"));
+    const shiftEnd = String(values.get("shift_end"));
+    if (!name || !skills.length || shiftStart >= shiftEnd) {
+      setError(!name ? "Enter a technician name." : !skills.length ? "Select at least one skill." : "Shift end must be after shift start.");
+      return;
+    }
+
+    const technician: Technician = {
+      id: nextRecordId("T", caseData.technicians.map((item) => item.id)),
+      name,
+      skills,
+      shift_start: shiftStart,
+      shift_end: shiftEnd,
+      home_area: String(values.get("home_area")),
+      status: "active",
+    };
     markSetupChanged();
-    const number = caseData.technicians.length + 1;
-    setCaseData((current) => ({
-      ...current,
-      technicians: [...current.technicians, {
-        id: `T${String(number).padStart(2, "0")}`,
-        name: "New technician",
-        skills: ["ac"],
-        shift_start: "09:00",
-        shift_end: "18:00",
-        home_area: current.areas[0],
-      }],
-    }));
+    setCaseData((current) => ({ ...current, technicians: [...current.technicians, technician] }));
+    setSetupModal(null);
+    notify(`${technician.name} added. Save setup to keep it.`);
   };
 
-  const addJob = () => {
+  const addJob = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    const windowStart = String(values.get("window_start"));
+    const windowEnd = String(values.get("window_end"));
+    if (windowStart >= windowEnd) {
+      setError("Window end must be after window start.");
+      return;
+    }
+
+    const job: Job = {
+      id: nextRecordId("J", caseData.jobs.map((item) => item.id)),
+      area: String(values.get("area")),
+      skill: String(values.get("skill")),
+      duration_minutes: Number(values.get("duration")),
+      window_start: windowStart,
+      window_end: windowEnd,
+      status: "ready",
+    };
     markSetupChanged();
-    const number = caseData.jobs.length + 1;
-    setCaseData((current) => ({
-      ...current,
-      jobs: [...current.jobs, {
-        id: `J${String(number).padStart(2, "0")}`,
-        area: current.areas[0],
-        skill: "ac",
-        duration_minutes: 60,
-        window_start: "09:00",
-        window_end: "12:00",
-      }],
-    }));
+    setCaseData((current) => ({ ...current, jobs: [...current.jobs, job] }));
+    setSetupModal(null);
+    notify(`${job.id} added. Save setup to keep it.`);
   };
 
   const updateTravelTime = (from: string, to: string, minutes: number) => {
@@ -568,20 +667,20 @@ export default function Dispatcher({
   return (
     <main className={styles.app}>
       <header className={styles.header}>
-        <button className={styles.brand} type="button" onClick={() => setActiveView("plan")} aria-label="Routeboard home">
+        <button className={styles.brand} type="button" onClick={() => openView("plan")} aria-label="Routeboard home">
           <span><Route size={23} /></span>
           <strong>Routeboard<small>Dispatch optimiser</small></strong>
         </button>
 
         <nav className={styles.mainNav} aria-label="Workspace views">
-          {views.map((view) => { const Icon = view.icon; return <button type="button" key={view.id} className={activeView === view.id ? styles.navActive : ""} onClick={() => setActiveView(view.id)}><Icon size={16} />{view.label}</button>; })}
+          {views.map((view) => { const Icon = view.icon; return <button type="button" key={view.id} className={activeView === view.id ? styles.navActive : ""} onClick={() => openView(view.id)}><Icon size={16} />{view.label}</button>; })}
         </nav>
 
         <div className={styles.headerActions}>
           <label className={styles.caseSelect}><span>Case</span><select value={caseData.case_id} onChange={(event) => selectCase(event.target.value)} disabled={!!busyAction}>{cases.map((item) => <option key={item.case_id} value={item.case_id}>{item.case_id} · {item.technicians} tech · {item.jobs} jobs</option>)}</select></label>
           <span className={styles.date}><CalendarDays size={15} />{formatDate(caseData.today)}</span>
           <span className={styles.apiStatus}><i />{apiMode}</span>
-          <button className={styles.emergencyButton} type="button" onClick={() => { if (hasUnsavedChanges) { setActiveView("setup"); setError("Save or generate setup changes before adding an emergency job."); } else { setShowEmergency(true); } }}><Siren size={17} /> Emergency job</button>
+          <button className={styles.emergencyButton} type="button" onClick={() => { if (hasUnsavedChanges) { openView("setup"); setError("Save setup before adding an emergency job."); } else { setShowEmergency(true); } }}><Siren size={17} /> Emergency job</button>
           <button className={styles.generateButton} type="button" onClick={() => generate()} disabled={!!busyAction}>{busyAction === "generate" ? <LoaderCircle className={styles.spinner} size={17} /> : <Route size={17} />} Generate plan</button>
         </div>
       </header>
@@ -621,14 +720,14 @@ export default function Dispatcher({
 
       {activeView === "setup" && (
         <section className={styles.setupView}>
-          <div className={styles.viewTitle}><div><span className={styles.kicker}>Input workspace</span><h1>Case setup</h1><p>Edit technicians, jobs, and travel data before generating a plan.</p></div><div>{hasUnsavedChanges ? <span className={styles.changeStatus}><CircleAlert size={14} /> Unsaved changes</span> : planNeedsRefresh ? <span className={styles.changeStatus}><CircleAlert size={14} /> Plan needs regeneration</span> : <span className={styles.savedStatus}><Check size={14} /> Plan up to date</span>}<button className={styles.secondaryButton} type="button" onClick={() => generate()} disabled={!!busyAction}>{busyAction === "generate" ? <LoaderCircle className={styles.spinner} size={16} /> : <Route size={16} />} Save &amp; generate</button><button className={styles.primaryButton} type="button" onClick={saveSetup} disabled={!!busyAction || !hasUnsavedChanges}>{busyAction === "save" ? <LoaderCircle className={styles.spinner} size={16} /> : <Check size={16} />} Save changes</button></div></div>
-          <div className={styles.setupTabs}>{(["technicians", "jobs", "matrix"] as SetupTab[]).map((tab) => <button type="button" className={setupTab === tab ? styles.setupTabActive : ""} onClick={() => setSetupTab(tab)} key={tab}>{tab === "technicians" ? <UsersRound size={16} /> : tab === "jobs" ? <Wrench size={16} /> : <Table2 size={16} />}{tab === "matrix" ? "Travel matrix" : tab[0].toUpperCase() + tab.slice(1)}<span>{tab === "technicians" ? caseData.technicians.length : tab === "jobs" ? caseData.jobs.length : caseData.areas.length}</span></button>)}</div>
+          <div className={styles.viewTitle}><div><span className={styles.kicker}>Input workspace</span><h1>Case setup</h1><p>Manage the people, work, and travel times used by the plan.</p></div><div>{hasUnsavedChanges ? <span className={styles.changeStatus}><CircleAlert size={14} /> Unsaved changes</span> : planNeedsRefresh ? <span className={styles.changeStatus}><CircleAlert size={14} /> Update needed</span> : <span className={styles.savedStatus}><Check size={14} /> Saved</span>}<button className={styles.primaryButton} type="button" onClick={saveSetup} disabled={!!busyAction || !hasUnsavedChanges}>{busyAction === "save" ? <LoaderCircle className={styles.spinner} size={16} /> : <Check size={16} />} Save and update plan</button></div></div>
+          <div className={styles.setupTabs}>{(["technicians", "jobs", "matrix"] as SetupTab[]).map((tab) => <button type="button" className={setupTab === tab ? styles.setupTabActive : ""} onClick={() => openSetupTab(tab)} key={tab}>{tab === "technicians" ? <UsersRound size={16} /> : tab === "jobs" ? <Wrench size={16} /> : <Table2 size={16} />}{tab === "matrix" ? "Travel times" : tab[0].toUpperCase() + tab.slice(1)}<span>{tab === "technicians" ? caseData.technicians.length : tab === "jobs" ? caseData.jobs.length : caseData.areas.length}</span></button>)}</div>
 
-          {setupTab === "technicians" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Technicians</h2><p>Skills and shift availability for {caseData.today}.</p></div><button className={styles.secondaryButton} type="button" onClick={addTechnician}><Plus size={16} /> Add technician</button></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Name</th><th>Skills</th><th>Shift start</th><th>Shift end</th><th>Home area</th><th>Status</th></tr></thead><tbody>{caseData.technicians.map((technician, index) => <tr key={technician.id}><td><code>{technician.id}</code></td><td><input value={technician.name} onChange={(event) => updateTechnician(index, "name", event.target.value)} aria-label={`${technician.id} name`} /></td><td><input value={technician.skills.join(", ")} onChange={(event) => updateTechnician(index, "skills", event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} aria-label={`${technician.id} skills`} /></td><td><input type="time" value={technician.shift_start} onChange={(event) => updateTechnician(index, "shift_start", event.target.value)} aria-label={`${technician.id} shift start`} /></td><td><input type="time" value={technician.shift_end} onChange={(event) => updateTechnician(index, "shift_end", event.target.value)} aria-label={`${technician.id} shift end`} /></td><td><select value={technician.home_area} onChange={(event) => updateTechnician(index, "home_area", event.target.value)} aria-label={`${technician.id} home area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={technician.status ?? "active"} onChange={(event) => updateTechnician(index, "status", event.target.value)} aria-label={`${technician.id} status`}><option value="active">Active</option><option value="sick">Sick</option></select></td></tr>)}</tbody></table></div></div>}
+          {setupTab === "technicians" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Technicians</h2><p>Skills and shift availability for {caseData.today}.</p></div><button className={styles.secondaryButton} type="button" onClick={() => setSetupModal("technician")}><Plus size={16} /> Add technician</button></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Name</th><th>Skills</th><th>Shift start</th><th>Shift end</th><th>Home area</th><th>Status</th></tr></thead><tbody>{caseData.technicians.map((technician, index) => <tr key={technician.id}><td><code>{technician.id}</code></td><td><input value={technician.name} onChange={(event) => updateTechnician(index, "name", event.target.value)} aria-label={`${technician.id} name`} /></td><td><input value={technician.skills.join(", ")} onChange={(event) => updateTechnician(index, "skills", event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} aria-label={`${technician.id} skills`} /></td><td><input type="time" value={technician.shift_start} onChange={(event) => updateTechnician(index, "shift_start", event.target.value)} aria-label={`${technician.id} shift start`} /></td><td><input type="time" value={technician.shift_end} onChange={(event) => updateTechnician(index, "shift_end", event.target.value)} aria-label={`${technician.id} shift end`} /></td><td><select value={technician.home_area} onChange={(event) => updateTechnician(index, "home_area", event.target.value)} aria-label={`${technician.id} home area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={technician.status ?? "active"} onChange={(event) => updateTechnician(index, "status", event.target.value)} aria-label={`${technician.id} status`}><option value="active">Active</option><option value="sick">Sick</option></select></td></tr>)}</tbody></table></div></div>}
 
-          {setupTab === "jobs" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Jobs</h2><p>{caseData.jobs.length} service requests ready for assignment.</p></div><div className={styles.tableActions}><label className={styles.searchField}><Search size={15} /><input value={jobSearch} onChange={(event) => setJobSearch(event.target.value)} placeholder="Search jobs" aria-label="Search jobs" /></label><button className={styles.secondaryButton} type="button" onClick={addJob}><Plus size={16} /> Add job</button></div></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Area</th><th>Required skill</th><th>Duration</th><th>Window start</th><th>Window end</th><th>Status</th></tr></thead><tbody>{filteredJobs.map((job, index) => <tr key={job.id}><td><code>{job.id}</code></td><td><select value={job.area} onChange={(event) => updateJob(index, "area", event.target.value)} aria-label={`${job.id} area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={job.skill} onChange={(event) => updateJob(index, "skill", event.target.value)} aria-label={`${job.id} skill`}><option value="electrical">Electrical</option><option value="plumbing">Plumbing</option><option value="ac">AC</option><option value="gas_line">Gas line</option></select></td><td><input type="number" min="15" step="15" value={job.duration_minutes} onChange={(event) => updateJob(index, "duration_minutes", Number(event.target.value))} aria-label={`${job.id} duration`} /></td><td><input type="time" value={job.window_start} onChange={(event) => updateJob(index, "window_start", event.target.value)} aria-label={`${job.id} window start`} /></td><td><input type="time" value={job.window_end} onChange={(event) => updateJob(index, "window_end", event.target.value)} aria-label={`${job.id} window end`} /></td><td><select value={job.status ?? "ready"} onChange={(event) => updateJob(index, "status", event.target.value)} aria-label={`${job.id} status`}><option value="ready">Pending</option><option value="in_progress">In progress</option><option value="done">Done</option></select></td></tr>)}</tbody></table></div></div>}
+          {setupTab === "jobs" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Jobs</h2><p>{caseData.jobs.length} service requests.</p></div><div className={styles.tableActions}><label className={styles.searchField}><Search size={15} /><input value={jobSearch} onChange={(event) => setJobSearch(event.target.value)} placeholder="Search jobs" aria-label="Search jobs" /></label><button className={styles.secondaryButton} type="button" onClick={() => setSetupModal("job")}><Plus size={16} /> Add job</button></div></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Area</th><th>Required skill</th><th>Duration</th><th>Window start</th><th>Window end</th><th>Status</th></tr></thead><tbody>{filteredJobs.map((job, index) => <tr key={job.id}><td><code>{job.id}</code></td><td><select value={job.area} onChange={(event) => updateJob(index, "area", event.target.value)} aria-label={`${job.id} area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={job.skill} onChange={(event) => updateJob(index, "skill", event.target.value)} aria-label={`${job.id} skill`}><option value="electrical">Electrical</option><option value="plumbing">Plumbing</option><option value="ac">AC</option><option value="gas_line">Gas line</option></select></td><td><input type="number" min="15" step="15" value={job.duration_minutes} onChange={(event) => updateJob(index, "duration_minutes", Number(event.target.value))} aria-label={`${job.id} duration`} /></td><td><input type="time" value={job.window_start} onChange={(event) => updateJob(index, "window_start", event.target.value)} aria-label={`${job.id} window start`} /></td><td><input type="time" value={job.window_end} onChange={(event) => updateJob(index, "window_end", event.target.value)} aria-label={`${job.id} window end`} /></td><td><select value={job.status ?? "ready"} onChange={(event) => updateJob(index, "status", event.target.value)} aria-label={`${job.id} status`}><option value="ready">Pending</option><option value="in_progress">In progress</option><option value="done">Done</option></select></td></tr>)}</tbody></table></div></div>}
 
-          {setupTab === "matrix" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Travel matrix</h2><p>Authoritative drive time in minutes. Mirrored cells update together.</p></div><span className={styles.editableStatus}><PencilLine size={14} /> Editable</span></div><div className={styles.matrixScroll}><table className={styles.matrix}><thead><tr><th>From / to</th>{caseData.areas.map((area) => <th key={area}>{area}</th>)}</tr></thead><tbody>{caseData.areas.map((from) => <tr key={from}><th>{from}</th>{caseData.areas.map((to) => <td className={from === to ? styles.matrixSame : ""} key={to}><input type="number" min="0" step="1" value={caseData.travel_minutes[from][to]} onChange={(event) => updateTravelTime(from, to, Number(event.target.value))} aria-label={`${from} to ${to} travel minutes`} /><small>min</small></td>)}</tr>)}</tbody></table></div></div>}
+          {setupTab === "matrix" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Travel times</h2><p>Choose two areas and enter the drive time once.</p></div></div><div className={styles.matrixEditor}><label><span>From</span><select value={matrixFrom} onChange={(event) => setMatrixFrom(event.target.value)} aria-label="From area">{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></label><ArrowRight size={18} /><label><span>To</span><select value={matrixTo} onChange={(event) => setMatrixTo(event.target.value)} aria-label="To area">{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></label><label><span>Minutes</span><input type="number" min="0" step="1" value={caseData.travel_minutes[matrixFrom]?.[matrixTo] ?? 0} onChange={(event) => { if (event.target.value) updateTravelTime(matrixFrom, matrixTo, Number(event.target.value)); }} aria-label="Travel minutes" /></label></div><div className={styles.matrixScroll}><table className={styles.matrix}><thead><tr><th>From / to</th>{caseData.areas.map((area) => <th key={area}>{area}</th>)}</tr></thead><tbody>{caseData.areas.map((from) => <tr key={from}><th>{from}</th>{caseData.areas.map((to) => <td className={from === to ? styles.matrixSame : ""} key={to}>{caseData.travel_minutes[from][to]}<small>min</small></td>)}</tr>)}</tbody></table></div></div>}
         </section>
       )}
 
@@ -638,8 +737,28 @@ export default function Dispatcher({
           <div className={styles.comparisonGrid}>
             {[{ id: "baseline" as const, label: "First-fit baseline", data: baselinePlan }, { id: "working" as const, label: "Optimized / working", data: plan }].map((item) => <button type="button" className={timelineSource === item.id ? styles.comparisonActive : ""} key={item.id} onClick={() => setTimelineSource(item.id)}><span className={styles.comparisonTop}><span><small>{item.label}</small><strong>{item.data.score}<em>/100</em></strong></span>{timelineSource === item.id && <BadgeCheck size={20} />}</span><span className={styles.comparisonMetrics}><span><b>{item.data.stats.total_travel_minutes}m</b><small>Travel</small></span><span><b>{item.data.stats.jobs_scheduled}</b><small>Scheduled</small></span><span><b>{item.data.stats.jobs_unassigned}</b><small>Unassigned</small></span><span><b>{item.data.stats.jobs_at_risk}</b><small>At risk</small></span></span><span className={styles.openTimeline}>View this timeline <ArrowRight size={16} /></span></button>)}
           </div>
-          <div className={styles.routeSummary}><div className={styles.dataToolbar}><div><h2>{timelineSource === "baseline" ? "Baseline" : "Working"} route load</h2><p>Jobs and travel by technician.</p></div><button className={styles.primaryButton} type="button" onClick={() => setActiveView("plan")}>Open selected timeline <ArrowRight size={16} /></button></div><div className={styles.routeSummaryRows}>{caseData.technicians.map((technician) => { const route = displayPlan.assignments[technician.id] ?? []; const travel = route.reduce((sum, item) => sum + item.travel_minutes, 0); return <div key={technician.id}><span><strong>{technician.name}</strong><small>{technician.id}</small></span><div><i style={{ width: `${Math.min(100, route.length * 18)}%` }} /></div><b>{route.length} jobs</b><em>{travel}m travel</em></div>; })}</div></div>
+          <div className={styles.routeSummary}><div className={styles.dataToolbar}><div><h2>{timelineSource === "baseline" ? "Baseline" : "Working"} route load</h2><p>Jobs and travel by technician.</p></div><button className={styles.primaryButton} type="button" onClick={() => openView("plan")}>Open selected timeline <ArrowRight size={16} /></button></div><div className={styles.routeSummaryRows}>{caseData.technicians.map((technician) => { const route = displayPlan.assignments[technician.id] ?? []; const travel = route.reduce((sum, item) => sum + item.travel_minutes, 0); return <div key={technician.id}><span><strong>{technician.name}</strong><small>{technician.id}</small></span><div><i style={{ width: `${Math.min(100, route.length * 18)}%` }} /></div><b>{route.length} jobs</b><em>{travel}m travel</em></div>; })}</div></div>
         </section>
+      )}
+
+      {setupModal === "technician" && (
+        <div className={styles.drawerBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setSetupModal(null); }}>
+          <form className={styles.setupModal} onSubmit={addTechnician} role="dialog" aria-modal="true" aria-labelledby="add-technician-title">
+            <div className={styles.drawerHeader}><div><span className={styles.setupModalIcon}><UsersRound size={19} /></span><span><small>New team member</small><h2 id="add-technician-title">Add technician</h2></span></div><button className={styles.iconButton} type="button" title="Close" aria-label="Close add technician" onClick={() => setSetupModal(null)}><X size={18} /></button></div>
+            <div className={styles.formGrid}><label className={styles.fullField}><span>Name</span><input name="name" placeholder="Technician name" required autoFocus /></label><label><span>Home area</span><select name="home_area" required>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></label><fieldset className={styles.skillOptions}><legend>Skills</legend><label><input type="checkbox" name="skills" value="ac" defaultChecked /><Snowflake size={15} /> AC</label><label><input type="checkbox" name="skills" value="plumbing" /><Droplets size={15} /> Plumbing</label></fieldset><label><span>Shift start</span><input type="time" name="shift_start" defaultValue="09:00" required /></label><label><span>Shift end</span><input type="time" name="shift_end" defaultValue="18:00" required /></label></div>
+            <div className={styles.modalActions}><button className={styles.secondaryButton} type="button" onClick={() => setSetupModal(null)}>Cancel</button><button className={styles.primaryButton} type="submit"><Plus size={16} /> Add technician</button></div>
+          </form>
+        </div>
+      )}
+
+      {setupModal === "job" && (
+        <div className={styles.drawerBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setSetupModal(null); }}>
+          <form className={styles.setupModal} onSubmit={addJob} role="dialog" aria-modal="true" aria-labelledby="add-job-title">
+            <div className={styles.drawerHeader}><div><span className={styles.setupModalIcon}><Wrench size={19} /></span><span><small>New service request</small><h2 id="add-job-title">Add job</h2></span></div><button className={styles.iconButton} type="button" title="Close" aria-label="Close add job" onClick={() => setSetupModal(null)}><X size={18} /></button></div>
+            <div className={styles.formGrid}><label><span>Area</span><select name="area" required>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></label><label><span>Required skill</span><select name="skill" required><option value="ac">AC</option><option value="plumbing">Plumbing</option></select></label><label><span>Duration</span><select name="duration" defaultValue="60"><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option><option value="90">90 min</option><option value="120">120 min</option></select></label><span /><label><span>Window start</span><input type="time" name="window_start" defaultValue="09:00" required /></label><label><span>Window end</span><input type="time" name="window_end" defaultValue="12:00" required /></label></div>
+            <div className={styles.modalActions}><button className={styles.secondaryButton} type="button" onClick={() => setSetupModal(null)}>Cancel</button><button className={styles.primaryButton} type="submit"><Plus size={16} /> Add job</button></div>
+          </form>
+        </div>
       )}
 
       {selectedAssignment && (

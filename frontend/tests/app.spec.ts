@@ -38,6 +38,10 @@ test("dispatcher plan renders and rejects an invalid move", async ({ page }) => 
   await expect(page.getByText(/Rafiq marked unavailable/)).toBeVisible();
   await expect(page.getByText("Unavailable", { exact: true }).first()).toBeVisible();
 
+  await page.reload();
+  await expect(page.getByText("Unavailable", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("E01", { exact: true }).first()).toBeVisible();
+
   expect(errors).toEqual([]);
 });
 
@@ -48,22 +52,42 @@ test("setup, matrix, comparison, and case switching work", async ({ page }) => {
 
   await page.getByRole("button", { name: "Setup" }).click();
   await expect(page.getByRole("heading", { name: "Case setup" })).toBeVisible();
+  await expect(page).toHaveURL(/#setup\/technicians$/);
   await expect(page.locator("tbody tr")).toHaveCount(12);
   await page.getByLabel("T01 name").fill("Updated technician");
   await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await page.getByRole("button", { name: "Add technician" }).click();
+  await page.getByRole("dialog", { name: "Add technician" }).getByLabel("Name").fill("New field technician");
+  await page.getByRole("dialog", { name: "Add technician" }).getByRole("button", { name: "Add technician", exact: true }).click();
+  await expect(page.getByLabel("T13 name")).toHaveValue("New field technician");
 
   await page.getByRole("button", { name: /Jobs/ }).click();
+  await expect(page).toHaveURL(/#setup\/jobs$/);
   await expect(page.getByLabel("Search jobs")).toBeVisible();
   await page.getByLabel("Search jobs").fill("gas line");
   await expect(page.getByText("J21", { exact: true })).toBeVisible();
+  await page.getByLabel("Search jobs").fill("");
+  await page.getByRole("button", { name: "Add job" }).click();
+  await page.getByRole("dialog", { name: "Add job" }).getByRole("button", { name: "Add job", exact: true }).click();
+  await expect(page.getByText("J38", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: /Travel matrix/ }).click();
-  await expect(page.getByRole("heading", { name: "Travel matrix" })).toBeVisible();
-  await expect(page.getByText("Authoritative drive time in minutes.")).toBeVisible();
-  await page.getByLabel("Banani to Bashundhara travel minutes").fill("21");
-  await expect(page.getByLabel("Bashundhara to Banani travel minutes")).toHaveValue("21");
-  await page.getByRole("button", { name: "Save & generate" }).click();
-  await expect(page.getByText("Plan up to date")).toBeVisible();
+  await page.getByRole("button", { name: /Travel times/ }).click();
+  await expect(page).toHaveURL(/#setup\/matrix$/);
+  await expect(page.getByRole("heading", { name: "Travel times" })).toBeVisible();
+  await page.getByLabel("From area").selectOption("Banani");
+  await page.getByLabel("To area").selectOption("Bashundhara");
+  await page.getByLabel("Travel minutes").fill("21");
+  await page.getByRole("button", { name: "Save and update plan" }).click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Travel times" })).toBeVisible();
+  await expect(page).toHaveURL(/#setup\/matrix$/);
+  await page.getByLabel("From area").selectOption("Banani");
+  await page.getByLabel("To area").selectOption("Bashundhara");
+  await expect(page.getByLabel("Travel minutes")).toHaveValue("21");
+  await page.getByRole("button", { name: /Technicians/ }).click();
+  await expect(page.getByLabel("T13 name")).toHaveValue("New field technician");
 
   await page.getByRole("button", { name: "Compare" }).click();
   await expect(page.getByRole("heading", { name: "Baseline vs. working plan" })).toBeVisible();

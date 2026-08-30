@@ -331,7 +331,7 @@
 
 .banner {
   position: fixed;
-  z-index: 70;
+  z-index: 110;
   top: 154px;
   left: 50%;
   min-width: 360px;
@@ -1141,8 +1141,7 @@
 }
 
 .changeStatus,
-.savedStatus,
-.editableStatus {
+.savedStatus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1153,8 +1152,7 @@
   white-space: nowrap;
 }
 
-.savedStatus,
-.editableStatus {
+.savedStatus {
   color: #35714b;
 }
 
@@ -1171,10 +1169,6 @@
   padding: 0;
   border: 0;
   outline: 0;
-}
-
-.editableStatus {
-  text-transform: uppercase;
 }
 
 .matrixScroll {
@@ -1213,23 +1207,6 @@
   font-weight: 600;
 }
 
-.matrix td input {
-  width: 56px;
-  height: 30px;
-  padding: 0 5px;
-  color: inherit;
-  background: #fff;
-  border: 1px solid #d5dcd6;
-  border-radius: 4px;
-  font: inherit;
-  text-align: right;
-}
-
-.matrix td input:focus {
-  border-color: var(--blue);
-  outline: 2px solid var(--blue-soft);
-}
-
 .matrix td small {
   margin-left: 4px;
   color: var(--muted);
@@ -1242,8 +1219,45 @@
   background: #eef2ee;
 }
 
-.matrix .matrixSame input {
-  background: #f7f9f7;
+.matrixEditor {
+  min-height: 86px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #f8faf8;
+  border-bottom: 1px solid var(--line);
+}
+
+.matrixEditor label {
+  min-width: 170px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.matrixEditor select,
+.matrixEditor input {
+  width: 100%;
+  height: 38px;
+  padding: 0 9px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+}
+
+.matrixEditor label:last-child {
+  min-width: 100px;
+  max-width: 120px;
+}
+
+.matrixEditor > svg {
+  align-self: flex-end;
+  margin-bottom: 10px;
+  color: var(--muted);
 }
 
 .compareView {
@@ -1512,13 +1526,24 @@
   font-size: 8px;
 }
 
-.emergencyModal {
+.emergencyModal,
+.setupModal {
   width: 450px;
   margin: auto;
   padding: 24px;
   background: #fff;
   border-radius: 7px;
   box-shadow: 0 24px 70px rgba(23, 32, 30, 0.24);
+}
+
+.setupModalIcon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-radius: 5px;
 }
 
 .emergencyIcon {
@@ -1556,6 +1581,41 @@
   border: 1px solid var(--line-dark);
   border-radius: 4px;
   font-size: 10px;
+}
+
+.formGrid .fullField {
+  grid-column: 1 / -1;
+}
+
+.skillOptions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  border: 0;
+}
+
+.skillOptions legend {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.skillOptions label {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  color: var(--ink);
+  background: #f8faf8;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+}
+
+.skillOptions input {
+  width: 15px;
+  height: 15px;
 }
 
 .replanNote {
@@ -1710,5 +1770,19 @@
   .searchField { flex: 1; }
   .comparisonGrid { grid-template-columns: 1fr; }
   .emergencyModal,
+  .setupModal,
   .jobDrawer { width: calc(100% - 24px); }
+
+  .matrixEditor {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .matrixEditor label,
+  .matrixEditor label:last-child {
+    min-width: 0;
+    max-width: none;
+  }
+
+  .matrixEditor > svg { display: none; }
 }

@@ -27,7 +27,7 @@ npx playwright install chromium
 
 ## Backend
 
-Set the server-only `BACKEND_URL` to the Spring API root. Without it, route handlers retain the public-data demo for standalone frontend development. Connected paths:
+Set the server-only `BACKEND_URL` to the Spring API root. Render uses `BACKEND_HOSTPORT` for the private service connection. Without either value, the public-data workspace saves in browser storage for standalone frontend development. Connected paths:
 
 - `POST /plan/generate`
 - `POST /plan/validate-move`

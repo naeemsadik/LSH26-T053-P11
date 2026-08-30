@@ -62,7 +62,11 @@ export class BackendApiError extends Error {
   }
 }
 
-const backendUrl = () => (process.env.BACKEND_URL ?? "").replace(/\/$/, "");
+const backendUrl = () => {
+  const publicUrl = (process.env.BACKEND_URL ?? "").replace(/\/$/, "");
+  const privateHost = (process.env.BACKEND_HOSTPORT ?? "").replace(/\/$/, "");
+  return publicUrl || (privateHost ? `http://${privateHost}` : "");
+};
 const trimTime = (value: string) => value.slice(0, 5);
 const toEnum = (value: string) => value.trim().toUpperCase().replace(/\s+/g, "_");
 const fromEnum = (value: string) => value.toLowerCase().split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");

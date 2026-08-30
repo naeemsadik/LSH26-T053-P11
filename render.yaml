@@ -34,11 +34,11 @@ services:
     envVars:
       - key: PORT
         value: 10000
-      - key: BACKEND_URL
+      - key: BACKEND_HOSTPORT
         fromService:
           type: web
           name: routeboard-api
-          envVarKey: RENDER_EXTERNAL_URL
+          property: hostport
 
 databases:
   - name: routeboard-db

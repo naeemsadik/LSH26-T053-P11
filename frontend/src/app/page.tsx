@@ -11,7 +11,7 @@ export default async function Home() {
   let initialPlan = generatePlan(initialCase);
   let initialBaseline = generateBaselinePlan(initialCase);
   let cases = getCaseSummaries();
-  let apiMode: "Live API" | "Demo API" = "Demo API";
+  let apiMode: "Live API" | "Browser save" = "Browser save";
 
   if (backendEnabled()) {
     try {
@@ -27,7 +27,7 @@ export default async function Home() {
       }];
       apiMode = "Live API";
     } catch {
-      apiMode = "Demo API";
+      apiMode = "Browser save";
     }
   }
 
