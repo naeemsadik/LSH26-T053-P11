@@ -1,5 +1,31 @@
 services:
   - type: web
+    name: routeboard-api
+    runtime: docker
+    repo: https://github.com/naeemsadik/LSH26-T053-P11-Backend
+    branch: main
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: routeboard-db
+          property: connectionString
+      - key: DB_USERNAME
+        fromDatabase:
+          name: routeboard-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: routeboard-db
+          property: password
+
+  - type: web
     name: routeboard
     runtime: docker
     plan: free
@@ -15,3 +41,12 @@ services:
           type: web
           name: routeboard-api
           property: hostport
+
+databases:
+  - name: routeboard-db
+    plan: free
+    region: singapore
+    postgresMajorVersion: "17"
+    databaseName: routeboard
+    user: routeboard
+    ipAllowList: []
