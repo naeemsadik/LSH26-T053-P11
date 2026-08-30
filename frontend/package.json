@@ -1,0 +1,29 @@
+{
+  "name": "routeboard-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Route and shift assignment workspace for field dispatchers.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "lucide-react": "^1.37.0",
+    "next": "16.3.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.3",
+    "typescript": "^5"
+  }
+}
