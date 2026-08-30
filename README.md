@@ -7,6 +7,13 @@ Next.js dispatcher workspace for route and shift assignment optimization.
 - Frontend: [naeemsadik/LSH26-T053-P11](https://github.com/naeemsadik/LSH26-T053-P11)
 - Backend API: [naeemsadik/LSH26-T053-P11-Backend](https://github.com/naeemsadik/LSH26-T053-P11-Backend)
 
+## Live deployment
+
+- Frontend: [https://routeboard-65q1.onrender.com](https://routeboard-65q1.onrender.com/)
+- Backend API: [https://routeboard-api.onrender.com](https://routeboard-api.onrender.com)
+- Backend health: [https://routeboard-api.onrender.com/health](https://routeboard-api.onrender.com/health)
+- API documentation: [https://routeboard-api.onrender.com/swagger-ui.html](https://routeboard-api.onrender.com/swagger-ui.html)
+
 The `backend` entry in this repository is a Git submodule pointing to the
 standalone backend repository. The Spring source and its deployment history
 are maintained there, not duplicated here.

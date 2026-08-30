@@ -2,6 +2,11 @@
 
 Desktop-first dispatcher workspace for P11 route and shift assignment optimisation.
 
+## Live deployment
+
+- Frontend: [https://routeboard-65q1.onrender.com](https://routeboard-65q1.onrender.com/)
+- Backend API: [https://routeboard-api.onrender.com](https://routeboard-api.onrender.com)
+
 ## Architecture
 
 ```mermaid
