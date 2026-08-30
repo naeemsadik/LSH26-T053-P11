@@ -27,7 +27,9 @@ npx playwright install chromium
 
 ## Backend
 
-Set the server-only `BACKEND_URL` to the Spring API root. Render uses `BACKEND_HOSTPORT` for the private service connection. Without either value, the public-data workspace saves in browser storage for standalone frontend development. Connected paths:
+The Spring API lives in the separate [Routeboard backend repository](https://github.com/naeemsadik/LSH26-T053-P11-Backend).
+
+Set the server-only `BACKEND_URL` to its public API root. Render uses `BACKEND_HOSTPORT` to connect privately to the `routeboard-api` service. Without either value, the public-data workspace saves in browser storage for standalone frontend development. Connected paths:
 
 - `POST /plan/generate`
 - `POST /plan/validate-move`
@@ -36,4 +38,9 @@ Set the server-only `BACKEND_URL` to the Spring API root. Render uses `BACKEND_H
 - `GET|POST /cases/:caseId` (Next.js adapter)
 - `POST /technicians/:id/sick`
 
-Use `docker compose up --build` from the repository root to run the connected stack.
+Initialize the backend submodule, then use `docker compose up --build` from the repository root to run the connected stack:
+
+```bash
+git submodule update --init --recursive
+docker compose up --build
+```

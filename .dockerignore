@@ -1,5 +1,6 @@
 .git
 .github
+backend
 .idea
 **/.idea
 **/.next
