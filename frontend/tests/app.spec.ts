@@ -100,6 +100,22 @@ test("setup, matrix, comparison, and case switching work", async ({ page }) => {
   await expect(page.locator("[class*='technicianRow']")).toHaveCount(15);
 });
 
+test("busy-day navigation remains usable on a narrow screen", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-routeboard-ready", "true");
+
+  await expect(page.getByRole("button", { name: "Generate plan" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Emergency job" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Workspace views" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+
+  await page.getByRole("button", { name: "Setup" }).click();
+  await expect(page.getByRole("heading", { name: "Case setup" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save and update plan" })).toBeVisible();
+  await page.screenshot({ path: "test-results/routeboard-mobile.png", fullPage: true });
+});
+
 test("planning API returns explicit rule validation", async ({ request }) => {
   const caseResponse = await request.get("/api/cases/PUB-01");
   expect(caseResponse.ok()).toBeTruthy();

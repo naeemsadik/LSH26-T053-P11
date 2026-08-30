@@ -666,25 +666,36 @@ export default function Dispatcher({
 
   return (
     <main className={styles.app}>
-      <header className={styles.header}>
+      <aside className={styles.sidebar}>
         <button className={styles.brand} type="button" onClick={() => openView("plan")} aria-label="Routeboard home">
           <span><Route size={23} /></span>
           <strong>Routeboard<small>Dispatch optimiser</small></strong>
         </button>
 
+        <span className={styles.sidebarLabel}>Workspace</span>
         <nav className={styles.mainNav} aria-label="Workspace views">
           {views.map((view) => { const Icon = view.icon; return <button type="button" key={view.id} className={activeView === view.id ? styles.navActive : ""} onClick={() => openView(view.id)}><Icon size={16} />{view.label}</button>; })}
         </nav>
 
-        <div className={styles.headerActions}>
-          <label className={styles.caseSelect}><span>Case</span><select value={caseData.case_id} onChange={(event) => selectCase(event.target.value)} disabled={!!busyAction}>{cases.map((item) => <option key={item.case_id} value={item.case_id}>{item.case_id} · {item.technicians} tech · {item.jobs} jobs</option>)}</select></label>
-          <span className={styles.date}><CalendarDays size={15} />{formatDate(caseData.today)}</span>
-          <span className={styles.apiStatus}><i />{apiMode}</span>
-          <button className={styles.emergencyButton} type="button" onClick={() => { if (hasUnsavedChanges) { openView("setup"); setError("Save setup before adding an emergency job."); } else { setShowEmergency(true); } }}><Siren size={17} /> Emergency job</button>
+        <span className={styles.sidebarLabel}>Day controls</span>
+        <div className={styles.sidebarActions}>
           <button className={styles.generateButton} type="button" onClick={() => generate()} disabled={!!busyAction}>{busyAction === "generate" ? <LoaderCircle className={styles.spinner} size={17} /> : <Route size={17} />} Generate plan</button>
+          <button className={styles.emergencyButton} type="button" onClick={() => { if (hasUnsavedChanges) { openView("setup"); setError("Save setup before adding an emergency job."); } else { setShowEmergency(true); } }}><Siren size={17} /> Emergency job</button>
         </div>
+        <div className={styles.sidebarFooter}>
+          <span className={styles.apiStatus}><i />{apiMode}</span>
+        </div>
+      </aside>
+
+      <header className={styles.topbar}>
+        <span className={styles.date}>
+          <CalendarDays size={17} />
+          <span><small>Dispatch day</small><strong>{formatDate(caseData.today)}</strong></span>
+        </span>
+        <label className={styles.caseSelect}><span>Case</span><select value={caseData.case_id} onChange={(event) => selectCase(event.target.value)} disabled={!!busyAction}>{cases.map((item) => <option key={item.case_id} value={item.case_id}>{item.case_id} / {item.technicians} tech / {item.jobs} jobs</option>)}</select></label>
       </header>
 
+      <div className={styles.workspace}>
       {(activeView === "plan" || activeView === "compare") && (
         <section className={styles.statsBar} aria-label="Current plan statistics">
           <div className={styles.scoreStat}><span>Plan score</span><strong>{displayPlan.score}</strong><em>/100</em></div>
@@ -740,6 +751,7 @@ export default function Dispatcher({
           <div className={styles.routeSummary}><div className={styles.dataToolbar}><div><h2>{timelineSource === "baseline" ? "Baseline" : "Working"} route load</h2><p>Jobs and travel by technician.</p></div><button className={styles.primaryButton} type="button" onClick={() => openView("plan")}>Open selected timeline <ArrowRight size={16} /></button></div><div className={styles.routeSummaryRows}>{caseData.technicians.map((technician) => { const route = displayPlan.assignments[technician.id] ?? []; const travel = route.reduce((sum, item) => sum + item.travel_minutes, 0); return <div key={technician.id}><span><strong>{technician.name}</strong><small>{technician.id}</small></span><div><i style={{ width: `${Math.min(100, route.length * 18)}%` }} /></div><b>{route.length} jobs</b><em>{travel}m travel</em></div>; })}</div></div>
         </section>
       )}
+      </div>
 
       {setupModal === "technician" && (
         <div className={styles.drawerBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setSetupModal(null); }}>
