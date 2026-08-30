@@ -1,14 +1,15 @@
 import Dispatcher from "./dispatcher";
 import { connection } from "next/server";
-import { backendEnabled, getBackendSnapshot } from "@/lib/backend";
+import { backendEnabled, getBackendBaseline, getBackendSnapshot } from "@/lib/backend";
 import { getCase, getCaseSummaries } from "@/lib/dataset";
-import { generatePlan } from "@/lib/planner";
+import { generateBaselinePlan, generatePlan } from "@/lib/planner";
 
 export default async function Home() {
   await connection();
   let initialCase = getCase("PUB-01");
   if (!initialCase) throw new Error("Public case PUB-01 is missing.");
   let initialPlan = generatePlan(initialCase);
+  let initialBaseline = generateBaselinePlan(initialCase);
   let cases = getCaseSummaries();
   let apiMode: "Live API" | "Demo API" = "Demo API";
 
@@ -17,6 +18,7 @@ export default async function Home() {
       const snapshot = await getBackendSnapshot(true);
       initialCase = snapshot.caseData;
       initialPlan = snapshot.plan;
+      initialBaseline = await getBackendBaseline();
       cases = [{
         case_id: initialCase.case_id,
         today: initialCase.today,
@@ -33,6 +35,7 @@ export default async function Home() {
     <Dispatcher
       initialCase={initialCase}
       initialPlan={initialPlan}
+      initialBaseline={initialBaseline}
       cases={cases}
       apiMode={apiMode}
     />

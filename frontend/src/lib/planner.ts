@@ -21,8 +21,7 @@ export function minutesToTime(value: number): string {
 }
 
 function travel(caseData: CaseData, from: string, to: string): number {
-  if (from === to) return 0;
-  return caseData.travel_minutes[from]?.[to] ?? 0;
+  return caseData.travel_minutes[from]?.[to] ?? (from === to ? 10 : 0);
 }
 
 function assignmentFor(
@@ -46,7 +45,7 @@ function assignmentFor(
     travel_from: travelFrom,
     travel_minutes: travelMinutes,
     margin_minutes: margin,
-    at_risk: margin <= 15,
+    at_risk: margin <= 10,
   };
 }
 
@@ -127,7 +126,7 @@ export function generatePlan(caseData: CaseData): Plan {
     ]),
   );
   const unassigned: UnassignedJob[] = [];
-  const jobs = [...caseData.jobs].sort(
+  const jobs = caseData.jobs.filter((job) => !job.status || job.status === "ready").sort(
     (a, b) => timeToMinutes(a.window_end) - timeToMinutes(b.window_end) || timeToMinutes(a.window_start) - timeToMinutes(b.window_start),
   );
 
@@ -180,6 +179,52 @@ export function generatePlan(caseData: CaseData): Plan {
     stats,
     score: scoreFor(stats),
     generated_at: new Date().toISOString(),
+    inactive_technicians: caseData.technicians.filter((item) => item.status === "sick").map((item) => item.id),
+  };
+}
+
+export function generateBaselinePlan(caseData: CaseData): Plan {
+  const assignments = Object.fromEntries(
+    caseData.technicians.map((technician) => [technician.id, [] as Assignment[]]),
+  );
+  const routeState = Object.fromEntries(
+    caseData.technicians.map((technician) => [technician.id, {
+      time: timeToMinutes(technician.shift_start),
+      area: technician.home_area,
+    }]),
+  );
+  const unassigned: UnassignedJob[] = [];
+
+  for (const job of caseData.jobs.filter((item) => !item.status || item.status === "ready")) {
+    const candidate = caseData.technicians.find((technician) => {
+      if (technician.status === "sick" || !technician.skills.includes(job.skill)) return false;
+      const state = routeState[technician.id];
+      const start = Math.max(state.time + travel(caseData, state.area, job.area), timeToMinutes(job.window_start));
+      return start <= timeToMinutes(job.window_end) && start + job.duration_minutes <= timeToMinutes(technician.shift_end);
+    });
+
+    if (!candidate) {
+      unassigned.push(unassignedReason(caseData, job));
+      continue;
+    }
+
+    const state = routeState[candidate.id];
+    const travelMinutes = travel(caseData, state.area, job.area);
+    const start = Math.max(state.time + travelMinutes, timeToMinutes(job.window_start));
+    const assignment = assignmentFor(job, candidate, start, state.area, travelMinutes);
+    assignments[candidate.id].push(assignment);
+    routeState[candidate.id] = { time: timeToMinutes(assignment.end), area: job.area };
+  }
+
+  const stats = statsFor(assignments, unassigned);
+  return {
+    case_id: caseData.case_id,
+    assignments,
+    unassigned,
+    stats,
+    score: scoreFor(stats),
+    generated_at: new Date().toISOString(),
+    inactive_technicians: caseData.technicians.filter((item) => item.status === "sick").map((item) => item.id),
   };
 }
 

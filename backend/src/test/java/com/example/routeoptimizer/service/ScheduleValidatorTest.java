@@ -142,4 +142,16 @@ class ScheduleValidatorTest {
         assertFalse(cascadeResult.isValid());
         assertEquals("TIME_WINDOW", cascadeResult.getBrokenRule());
     }
+
+    @Test
+    @DisplayName("Travel lookup uses the loaded matrix without querying the database per route stop")
+    void testTravelLookupUsesCachedMatrix() {
+        TravelMatrixRepository repository = Mockito.mock(TravelMatrixRepository.class);
+        TravelMatrixService service = new TravelMatrixService(repository, 10);
+        service.initializeDefaultDhakaMatrix();
+        Mockito.reset(repository);
+
+        assertEquals(25, service.getTravelTime(Area.UTTARA, Area.BANANI));
+        Mockito.verify(repository, Mockito.never()).findAll();
+    }
 }

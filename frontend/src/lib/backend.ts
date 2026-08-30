@@ -115,6 +115,75 @@ export async function getBackendContext(): Promise<BackendContext> {
   return { technicians, jobs, matrix };
 }
 
+export async function saveBackendCase(caseData: CaseData): Promise<CaseData> {
+  const current = await getBackendContext();
+  const currentCase = normalizeCase(current);
+  const technicianIds = new Set(current.technicians.map((item) => item.id));
+  const jobIds = new Set(current.jobs.map((item) => item.id));
+  const currentTechnicians = new Map(currentCase.technicians.map((item) => [item.id, item]));
+  const currentJobs = new Map(currentCase.jobs.map((item) => [item.id, item]));
+  const writes: Promise<unknown>[] = [];
+
+  for (const technician of caseData.technicians) {
+    const existing = currentTechnicians.get(technician.id);
+    const unchanged = existing
+      && existing.name === technician.name
+      && [...existing.skills].sort().join() === [...technician.skills].sort().join()
+      && existing.shift_start === technician.shift_start
+      && existing.shift_end === technician.shift_end
+      && existing.home_area === technician.home_area
+      && (existing.status ?? "active") === (technician.status ?? "active");
+    if (unchanged) continue;
+
+    const payload = toBackendTechnician(technician);
+    if (technicianIds.has(technician.id)) {
+      const update: Partial<typeof payload> = { ...payload };
+      delete update.id;
+      writes.push(backendRequest(`/technicians/${encodeURIComponent(technician.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(update),
+      }));
+    } else {
+      writes.push(backendRequest("/technicians", { method: "POST", body: JSON.stringify(payload) }));
+    }
+  }
+
+  for (const job of caseData.jobs) {
+    const existing = currentJobs.get(job.id);
+    const unchanged = existing
+      && existing.area === job.area
+      && existing.skill === job.skill
+      && existing.duration_minutes === job.duration_minutes
+      && existing.window_start === job.window_start
+      && existing.window_end === job.window_end
+      && (existing.status ?? "ready") === (job.status ?? "ready");
+    if (unchanged) continue;
+    writes.push(backendRequest(jobIds.has(job.id) ? `/jobs/${encodeURIComponent(job.id)}` : "/jobs", {
+      method: jobIds.has(job.id) ? "PUT" : "POST",
+      body: JSON.stringify(toBackendJob(job)),
+    }));
+  }
+
+  await Promise.all(writes);
+
+  const matrixUpdates: Promise<unknown>[] = [];
+  for (let fromIndex = 0; fromIndex < caseData.areas.length; fromIndex += 1) {
+    const from = caseData.areas[fromIndex];
+    for (let toIndex = fromIndex; toIndex < caseData.areas.length; toIndex += 1) {
+      const to = caseData.areas[toIndex];
+      const minutes = caseData.travel_minutes[from]?.[to];
+      if (!Number.isFinite(minutes) || minutes < 0 || currentCase.travel_minutes[from]?.[to] === minutes) continue;
+      matrixUpdates.push(backendRequest("/travel-matrix", {
+        method: "PUT",
+        body: JSON.stringify({ areaA: toEnum(from), areaB: toEnum(to), travelTimeMinutes: minutes }),
+      }));
+    }
+  }
+  await Promise.all(matrixUpdates);
+
+  return normalizeCase(await getBackendContext());
+}
+
 export function normalizeCase(context: BackendContext): CaseData {
   const areaEnums = [...new Set([
     ...Object.keys(context.matrix.travelTimes).flatMap((key) => key.split("::")),
@@ -236,6 +305,14 @@ export async function getBackendSnapshot(ensurePlan = false): Promise<{ caseData
     response = await backendRequest<BackendPlanResponse>("/plan/generate", { method: "POST" });
   }
   return { caseData: normalizeCase(context), plan: normalizePlan(response, context) };
+}
+
+export async function getBackendBaseline(): Promise<Plan> {
+  const [context, response] = await Promise.all([
+    getBackendContext(),
+    backendRequest<BackendPlanResponse>("/plan/baseline", { method: "POST" }),
+  ]);
+  return normalizePlan(response, context);
 }
 
 export function toBackendTechnician(technician: Technician) {

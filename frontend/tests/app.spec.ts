@@ -49,6 +49,8 @@ test("setup, matrix, comparison, and case switching work", async ({ page }) => {
   await page.getByRole("button", { name: "Setup" }).click();
   await expect(page.getByRole("heading", { name: "Case setup" })).toBeVisible();
   await expect(page.locator("tbody tr")).toHaveCount(12);
+  await page.getByLabel("T01 name").fill("Updated technician");
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
 
   await page.getByRole("button", { name: /Jobs/ }).click();
   await expect(page.getByLabel("Search jobs")).toBeVisible();
@@ -58,11 +60,15 @@ test("setup, matrix, comparison, and case switching work", async ({ page }) => {
   await page.getByRole("button", { name: /Travel matrix/ }).click();
   await expect(page.getByRole("heading", { name: "Travel matrix" })).toBeVisible();
   await expect(page.getByText("Authoritative drive time in minutes.")).toBeVisible();
+  await page.getByLabel("Banani to Bashundhara travel minutes").fill("21");
+  await expect(page.getByLabel("Bashundhara to Banani travel minutes")).toHaveValue("21");
+  await page.getByRole("button", { name: "Save & generate" }).click();
+  await expect(page.getByText("Plan up to date")).toBeVisible();
 
   await page.getByRole("button", { name: "Compare" }).click();
-  await expect(page.getByRole("heading", { name: "Generated vs. working plan" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Generated plan/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Working plan/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Baseline vs. working plan" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /First-fit baseline/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Optimized \/ working/ })).toBeVisible();
 
   await page.locator("select").first().selectOption("PUB-02");
   await page.getByRole("navigation", { name: "Workspace views" }).getByRole("button", { name: "Plan", exact: true }).click();
@@ -82,6 +88,13 @@ test("planning API returns explicit rule validation", async ({ request }) => {
   const plan = await planResponse.json();
   expect(plan.stats.jobs_scheduled + plan.stats.jobs_unassigned).toBe(caseData.jobs.length);
   expect(plan.unassigned.every((item: { reason_text?: string }) => Boolean(item.reason_text))).toBeTruthy();
+
+  const baselineResponse = await request.post("/api/plan/baseline", {
+    data: { case_id: "PUB-01", case_data: caseData },
+  });
+  expect(baselineResponse.ok()).toBeTruthy();
+  const baseline = await baselineResponse.json();
+  expect(baseline.stats.jobs_scheduled + baseline.stats.jobs_unassigned).toBe(caseData.jobs.length);
 
   const electricalJob = Object.values(plan.assignments)
     .flat()

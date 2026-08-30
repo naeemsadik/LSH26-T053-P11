@@ -162,9 +162,7 @@
   font-size: 8px;
 }
 
-.apiStatus i,
-.activeStatus i,
-.readyStatus i {
+.apiStatus i {
   width: 6px;
   height: 6px;
   background: #59b47b;
@@ -211,7 +209,8 @@
 }
 
 .generateButton:disabled,
-.primaryButton:disabled {
+.primaryButton:disabled,
+.secondaryButton:disabled {
   cursor: wait;
   opacity: 0.65;
 }
@@ -240,7 +239,7 @@
   z-index: 20;
   min-height: 78px;
   display: grid;
-  grid-template-columns: 130px repeat(4, minmax(0, 1fr));
+  grid-template-columns: 130px repeat(5, minmax(0, 1fr));
   background: #fff;
   border-bottom: 1px solid var(--line);
   box-shadow: 0 3px 14px rgba(23, 32, 30, 0.04);
@@ -433,6 +432,11 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.viewTitle > div:last-child {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .sourceToggle,
@@ -1136,23 +1140,22 @@
   min-width: 190px;
 }
 
-.activeStatus,
-.readyStatus,
-.readOnly {
+.changeStatus,
+.savedStatus,
+.editableStatus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #35714b;
+  color: #9a650d;
+  font-family: var(--font-mono);
   font-size: 8px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.readyStatus {
-  color: #2c5ca8;
-}
-
-.readyStatus i {
-  background: #4b7fd4;
+.savedStatus,
+.editableStatus {
+  color: #35714b;
 }
 
 .searchField {
@@ -1170,9 +1173,7 @@
   outline: 0;
 }
 
-.readOnly {
-  color: var(--muted);
-  font-family: var(--font-mono);
+.editableStatus {
   text-transform: uppercase;
 }
 
@@ -1212,7 +1213,25 @@
   font-weight: 600;
 }
 
+.matrix td input {
+  width: 56px;
+  height: 30px;
+  padding: 0 5px;
+  color: inherit;
+  background: #fff;
+  border: 1px solid #d5dcd6;
+  border-radius: 4px;
+  font: inherit;
+  text-align: right;
+}
+
+.matrix td input:focus {
+  border-color: var(--blue);
+  outline: 2px solid var(--blue-soft);
+}
+
 .matrix td small {
+  margin-left: 4px;
   color: var(--muted);
   font-family: var(--font-body);
   font-size: 7px;
@@ -1221,6 +1240,10 @@
 .matrix .matrixSame {
   color: #8e9a94;
   background: #eef2ee;
+}
+
+.matrix .matrixSame input {
+  background: #f7f9f7;
 }
 
 .compareView {
@@ -1580,4 +1603,112 @@
   .date { display: none; }
   .stat { padding-inline: 12px; }
   .legend { display: none !important; }
+}
+
+@media (max-width: 760px) {
+  .app {
+    min-width: 0;
+    height: auto;
+    min-height: 100svh;
+    overflow: visible;
+  }
+
+  .header {
+    min-height: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .brand { width: 146px; }
+  .brand > strong { font-size: 18px; }
+
+  .mainNav {
+    order: 3;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .mainNav button { justify-content: center; }
+
+  .headerActions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .caseSelect {
+    min-width: 0;
+    flex: 1 1 210px;
+  }
+
+  .caseSelect select { width: 100%; }
+  .apiStatus { margin-left: auto; }
+  .emergencyButton,
+  .generateButton { flex: 1 1 150px; }
+
+  .statsBar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .scoreStat,
+  .stat { min-height: 74px; }
+  .scoreStat { position: relative; }
+
+  .planWorkspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+    padding: 12px;
+  }
+
+  .planMain { height: 670px; }
+
+  .planToolbar {
+    align-items: flex-end;
+    gap: 10px;
+  }
+
+  .planToolbar p { display: none; }
+  .timelinePanel { min-height: 590px; }
+  .panelHeader { min-height: 54px; }
+  .unassignedPanel { min-height: 320px; }
+
+  .banner {
+    top: 188px;
+    width: calc(100% - 24px);
+    min-width: 0;
+  }
+
+  .setupView,
+  .compareView { padding: 18px 12px; }
+
+  .viewTitle {
+    align-items: stretch;
+    flex-direction: column;
+    margin-bottom: 14px;
+  }
+
+  .viewTitle > div:last-child { justify-content: flex-start; }
+
+  .setupTabs {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .dataToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 14px;
+  }
+
+  .tableActions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .searchField { flex: 1; }
+  .comparisonGrid { grid-template-columns: 1fr; }
+  .emergencyModal,
+  .jobDrawer { width: calc(100% - 24px); }
 }

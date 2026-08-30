@@ -2,12 +2,8 @@ import { getCase } from "@/lib/dataset";
 import {
   backendEnabled,
   backendErrorResponse,
-  backendRequest,
-  getBackendContext,
   getBackendSnapshot,
-  normalizeCase,
-  toBackendJob,
-  toBackendTechnician,
+  saveBackendCase,
 } from "@/lib/backend";
 import type { CaseData } from "@/lib/types";
 
@@ -47,27 +43,7 @@ export async function POST(
 
   if (backendEnabled()) {
     try {
-      const current = await getBackendContext();
-      const technicianIds = new Set(current.technicians.map((item) => item.id));
-      const jobIds = new Set(current.jobs.map((item) => item.id));
-      await Promise.all(body.technicians.map(async (technician) => {
-        const payload = toBackendTechnician(technician);
-        if (technicianIds.has(technician.id)) {
-          const update: Partial<typeof payload> = { ...payload };
-          delete update.id;
-          await backendRequest(`/technicians/${encodeURIComponent(technician.id)}`, {
-            method: "PATCH",
-            body: JSON.stringify(update),
-          });
-        } else {
-          await backendRequest("/technicians", { method: "POST", body: JSON.stringify(payload) });
-        }
-      }));
-      await Promise.all(body.jobs.map((job) => backendRequest(
-        jobIds.has(job.id) ? `/jobs/${encodeURIComponent(job.id)}` : "/jobs",
-        { method: jobIds.has(job.id) ? "PUT" : "POST", body: JSON.stringify(toBackendJob(job)) },
-      )));
-      return Response.json({ case_data: normalizeCase(await getBackendContext()), saved: true, persistence: "postgres" });
+      return Response.json({ case_data: await saveBackendCase(body as CaseData), saved: true, persistence: "postgres" });
     } catch (error) {
       return backendErrorResponse(error);
     }

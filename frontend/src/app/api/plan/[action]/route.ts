@@ -6,16 +6,17 @@ import {
   getBackendContext,
   movePosition,
   normalizePlan,
+  saveBackendCase,
   toBackendJob,
   type BackendPlanResponse,
 } from "@/lib/backend";
-import { generatePlan, moveJob, validateMove } from "@/lib/planner";
+import { generateBaselinePlan, generatePlan, moveJob, validateMove } from "@/lib/planner";
 import type { CaseData, Job, Plan } from "@/lib/types";
 
 function isCaseData(value: unknown): value is CaseData {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<CaseData>;
-  return typeof item.case_id === "string" && Array.isArray(item.technicians) && Array.isArray(item.jobs);
+  return typeof item.case_id === "string" && Array.isArray(item.technicians) && Array.isArray(item.jobs) && Array.isArray(item.areas) && !!item.travel_minutes;
 }
 
 function isPlan(value: unknown): value is Plan {
@@ -52,7 +53,13 @@ export async function POST(
   if (backendEnabled()) {
     try {
       if (action === "generate") {
+        if (isCaseData(payload.case_data)) await saveBackendCase(payload.case_data);
         const response = await backendRequest<BackendPlanResponse>("/plan/generate", { method: "POST" });
+        return Response.json(normalizePlan(response, await getBackendContext()));
+      }
+
+      if (action === "baseline") {
+        const response = await backendRequest<BackendPlanResponse>("/plan/baseline", { method: "POST" });
         return Response.json(normalizePlan(response, await getBackendContext()));
       }
 
@@ -107,6 +114,10 @@ export async function POST(
   if (action === "generate") {
     await new Promise((resolve) => setTimeout(resolve, 320));
     return Response.json(generatePlan(caseData));
+  }
+
+  if (action === "baseline") {
+    return Response.json(generateBaselinePlan(caseData));
   }
 
   if (action === "replan-active") {

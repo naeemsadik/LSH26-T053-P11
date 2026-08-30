@@ -18,10 +18,10 @@ import {
   LayoutDashboard,
   LoaderCircle,
   MapPin,
+  PencilLine,
   Plus,
   Route,
   Search,
-  Settings2,
   Siren,
   Snowflake,
   Table2,
@@ -47,7 +47,13 @@ import type {
 
 type View = "plan" | "setup" | "compare";
 type SetupTab = "technicians" | "jobs" | "matrix";
-type TimelineSource = "generated" | "working";
+type TimelineSource = "baseline" | "working";
+
+type SetupSaveResponse = {
+  case_data: CaseData;
+  saved: boolean;
+  persistence: "postgres" | "session";
+};
 
 const API_ROOT = "/api";
 const DAY_START = 8 * 60;
@@ -246,12 +252,24 @@ function TimelineBoard({
   );
 }
 
-export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }: { initialCase: CaseData; initialPlan: Plan; cases: CaseSummary[]; apiMode: "Live API" | "Demo API" }) {
+export default function Dispatcher({
+  initialCase,
+  initialPlan,
+  initialBaseline,
+  cases,
+  apiMode,
+}: {
+  initialCase: CaseData;
+  initialPlan: Plan;
+  initialBaseline: Plan;
+  cases: CaseSummary[];
+  apiMode: "Live API" | "Demo API";
+}) {
   const [activeView, setActiveView] = useState<View>("plan");
   const [setupTab, setSetupTab] = useState<SetupTab>("technicians");
   const [caseData, setCaseData] = useState(initialCase);
   const [plan, setPlan] = useState(initialPlan);
-  const [baselinePlan, setBaselinePlan] = useState(initialPlan);
+  const [baselinePlan, setBaselinePlan] = useState(initialBaseline);
   const [timelineSource, setTimelineSource] = useState<TimelineSource>("working");
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -262,13 +280,15 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
   const [changedTechnicians, setChangedTechnicians] = useState<Set<string>>(new Set());
   const [showEmergency, setShowEmergency] = useState(false);
   const [jobSearch, setJobSearch] = useState("");
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [planNeedsRefresh, setPlanNeedsRefresh] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.routeboardReady = "true";
     return () => { delete document.documentElement.dataset.routeboardReady; };
   }, []);
 
-  const displayPlan = timelineSource === "generated" ? baselinePlan : plan;
+  const displayPlan = timelineSource === "baseline" ? baselinePlan : plan;
   const filteredJobs = useMemo(() => {
     const query = jobSearch.trim().toLowerCase();
     return query
@@ -281,6 +301,11 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
     window.setTimeout(() => setNotice(""), 2800);
   };
 
+  const markSetupChanged = () => {
+    setHasUnsavedChanges(true);
+    setPlanNeedsRefresh(true);
+  };
+
   const generate = async (nextCase = caseData) => {
     setBusyAction("generate");
     setError("");
@@ -291,8 +316,14 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
         body: JSON.stringify({ case_id: nextCase.case_id, case_data: nextCase }),
       });
       setPlan(nextPlan);
-      setBaselinePlan(nextPlan);
       setTimelineSource("working");
+      setHasUnsavedChanges(false);
+      setPlanNeedsRefresh(false);
+      const nextBaseline = await requestJson<Plan>("/plan/baseline", {
+        method: "POST",
+        body: JSON.stringify({ case_id: nextCase.case_id, case_data: nextCase }),
+      });
+      setBaselinePlan(nextBaseline);
       notify(`Plan generated: ${nextPlan.stats.jobs_scheduled} jobs scheduled.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Plan generation failed.");
@@ -306,16 +337,22 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
     setError("");
     try {
       const nextCase = await requestJson<CaseData>(`/cases/${caseId}`);
-      setCaseData(nextCase);
-      setJobSearch("");
       const nextPlan = await requestJson<Plan>("/plan/generate", {
         method: "POST",
-        body: JSON.stringify({ case_id: nextCase.case_id }),
+        body: JSON.stringify({ case_id: nextCase.case_id, case_data: nextCase }),
       });
+      const nextBaseline = await requestJson<Plan>("/plan/baseline", {
+        method: "POST",
+        body: JSON.stringify({ case_id: nextCase.case_id, case_data: nextCase }),
+      });
+      setCaseData(nextCase);
+      setJobSearch("");
       setPlan(nextPlan);
-      setBaselinePlan(nextPlan);
+      setBaselinePlan(nextBaseline);
       setTimelineSource("working");
       setSelectedAssignment(null);
+      setHasUnsavedChanges(false);
+      setPlanNeedsRefresh(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Case loading failed.");
     } finally {
@@ -370,10 +407,20 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
         method: "POST",
         body: JSON.stringify({ case_id: caseData.case_id, case_data: caseData, plan }),
       });
+      const nextCase = {
+        ...caseData,
+        technicians: caseData.technicians.map((item) => item.id === technician.id ? { ...item, status: "sick" as const } : item),
+      };
+      setCaseData(nextCase);
       setPlan(nextPlan);
       setTimelineSource("working");
-      setChangedTechnicians(new Set([technician.id]));
-      notify(`${technician.name} marked unavailable; pending jobs moved to unassigned.`);
+      setChangedTechnicians(new Set([...detectChangedRoutes(plan, nextPlan), technician.id]));
+      const nextBaseline = await requestJson<Plan>("/plan/baseline", {
+        method: "POST",
+        body: JSON.stringify({ case_id: nextCase.case_id, case_data: nextCase }),
+      });
+      setBaselinePlan(nextBaseline);
+      notify(`${technician.name} marked unavailable; remaining work redistributed.`);
       window.setTimeout(() => setChangedTechnicians(new Set()), 1800);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Technician status could not be changed.");
@@ -406,6 +453,11 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
       setPlan(nextPlan);
       setTimelineSource("working");
       setShowEmergency(false);
+      const nextBaseline = await requestJson<Plan>("/plan/baseline", {
+        method: "POST",
+        body: JSON.stringify({ case_id: nextCase.case_id, case_data: nextCase }),
+      });
+      setBaselinePlan(nextBaseline);
       notify(`${job.id} added; active routes replanned.`);
       window.setTimeout(() => setChangedTechnicians(new Set()), 1800);
     } catch (caught) {
@@ -419,11 +471,14 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
     setBusyAction("save");
     setError("");
     try {
-      await requestJson(`/cases/${caseData.case_id}`, {
+      const saved = await requestJson<SetupSaveResponse>(`/cases/${caseData.case_id}`, {
         method: "POST",
         body: JSON.stringify(caseData),
       });
-      notify(apiMode === "Live API" ? "Setup saved to the backend." : "Setup saved for this dispatcher session.");
+      setCaseData(saved.case_data);
+      setHasUnsavedChanges(false);
+      setPlanNeedsRefresh(planNeedsRefresh || hasUnsavedChanges);
+      notify(apiMode === "Live API" ? "Changes saved. Generate the plan to apply them." : "Changes saved for this session. Generate the plan to apply them.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Setup could not be saved.");
     } finally {
@@ -432,6 +487,7 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
   };
 
   const updateTechnician = (index: number, field: keyof Technician, value: string | string[]) => {
+    markSetupChanged();
     setCaseData((current) => ({
       ...current,
       technicians: current.technicians.map((technician, row) => row === index ? { ...technician, [field]: value } : technician),
@@ -439,6 +495,7 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
   };
 
   const updateJob = (index: number, field: keyof Job, value: string | number) => {
+    markSetupChanged();
     const jobId = filteredJobs[index]?.id;
     setCaseData((current) => ({
       ...current,
@@ -447,13 +504,14 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
   };
 
   const addTechnician = () => {
+    markSetupChanged();
     const number = caseData.technicians.length + 1;
     setCaseData((current) => ({
       ...current,
       technicians: [...current.technicians, {
         id: `T${String(number).padStart(2, "0")}`,
         name: "New technician",
-        skills: ["electrical"],
+        skills: ["ac"],
         shift_start: "09:00",
         shift_end: "18:00",
         home_area: current.areas[0],
@@ -462,18 +520,42 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
   };
 
   const addJob = () => {
+    markSetupChanged();
     const number = caseData.jobs.length + 1;
     setCaseData((current) => ({
       ...current,
       jobs: [...current.jobs, {
         id: `J${String(number).padStart(2, "0")}`,
         area: current.areas[0],
-        skill: "electrical",
+        skill: "ac",
         duration_minutes: 60,
         window_start: "09:00",
         window_end: "12:00",
       }],
     }));
+  };
+
+  const updateTravelTime = (from: string, to: string, minutes: number) => {
+    if (!Number.isFinite(minutes) || minutes < 0) return;
+    markSetupChanged();
+    setCaseData((current) => ({
+      ...current,
+      travel_minutes: {
+        ...current.travel_minutes,
+        [from]: { ...current.travel_minutes[from], [to]: minutes },
+        [to]: { ...current.travel_minutes[to], [from]: minutes },
+      },
+    }));
+  };
+
+  const exportPlan = () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(displayPlan, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${caseData.case_id.toLowerCase()}-plan.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    notify("Plan exported.");
   };
 
   const views = [
@@ -499,7 +581,7 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
           <label className={styles.caseSelect}><span>Case</span><select value={caseData.case_id} onChange={(event) => selectCase(event.target.value)} disabled={!!busyAction}>{cases.map((item) => <option key={item.case_id} value={item.case_id}>{item.case_id} · {item.technicians} tech · {item.jobs} jobs</option>)}</select></label>
           <span className={styles.date}><CalendarDays size={15} />{formatDate(caseData.today)}</span>
           <span className={styles.apiStatus}><i />{apiMode}</span>
-          <button className={styles.emergencyButton} type="button" onClick={() => setShowEmergency(true)}><Siren size={17} /> Emergency job</button>
+          <button className={styles.emergencyButton} type="button" onClick={() => { if (hasUnsavedChanges) { setActiveView("setup"); setError("Save or generate setup changes before adding an emergency job."); } else { setShowEmergency(true); } }}><Siren size={17} /> Emergency job</button>
           <button className={styles.generateButton} type="button" onClick={() => generate()} disabled={!!busyAction}>{busyAction === "generate" ? <LoaderCircle className={styles.spinner} size={17} /> : <Route size={17} />} Generate plan</button>
         </div>
       </header>
@@ -510,7 +592,8 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
           <Stat icon={<CarFront size={18} />} label="Total travel" value={`${Math.floor(stats.total_travel_minutes / 60)}h ${stats.total_travel_minutes % 60}m`} note="Across all routes" />
           <Stat icon={<BadgeCheck size={18} />} label="Jobs scheduled" value={String(stats.jobs_scheduled)} note={`${caseData.jobs.length} jobs received`} />
           <Stat icon={<CircleAlert size={18} />} label="Unassigned" value={String(stats.jobs_unassigned)} note={stats.jobs_unassigned ? "Needs dispatcher action" : "All work covered"} alert={stats.jobs_unassigned > 0} />
-          <Stat icon={<AlertTriangle size={18} />} label="At risk" value={String(stats.jobs_at_risk)} note="15 min margin or less" alert={stats.jobs_at_risk > 0} />
+          <Stat icon={<AlertTriangle size={18} />} label="At risk" value={String(stats.jobs_at_risk)} note="10 min margin or less" alert={stats.jobs_at_risk > 0} />
+          <Stat icon={<UsersRound size={18} />} label="Technicians idle" value={String(caseData.technicians.filter((item) => item.status !== "sick" && !(displayPlan.assignments[item.id]?.length)).length)} note="No assigned jobs" />
         </section>
       )}
 
@@ -522,8 +605,8 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
             <div className={styles.planToolbar}>
               <div><span className={styles.kicker}>Monday dispatch</span><h1>{caseData.case_id} day plan</h1><p>{caseData.technicians.length} technicians across {caseData.areas.length} Dhaka service areas</p></div>
               <div className={styles.toolbarRight}>
-                <div className={styles.sourceToggle} aria-label="Timeline plan source"><button type="button" className={timelineSource === "generated" ? styles.sourceActive : ""} onClick={() => setTimelineSource("generated")}>Generated</button><button type="button" className={timelineSource === "working" ? styles.sourceActive : ""} onClick={() => setTimelineSource("working")}>Working</button></div>
-                <button className={styles.iconButton} type="button" title="Export plan" aria-label="Export plan" onClick={() => notify("Plan export prepared.")}><Download size={17} /></button>
+                <div className={styles.sourceToggle} aria-label="Timeline plan source"><button type="button" className={timelineSource === "baseline" ? styles.sourceActive : ""} onClick={() => setTimelineSource("baseline")}>Baseline</button><button type="button" className={timelineSource === "working" ? styles.sourceActive : ""} onClick={() => setTimelineSource("working")}>Working</button></div>
+                <button className={styles.iconButton} type="button" title="Export plan" aria-label="Export plan" onClick={exportPlan}><Download size={17} /></button>
               </div>
             </div>
             <TimelineBoard caseData={caseData} plan={displayPlan} zoom={zoom} setZoom={setZoom} onSelect={setSelectedAssignment} onDropJob={dropJob} onSick={markSick} changedTechnicians={changedTechnicians} editable={timelineSource === "working" && !busyAction} />
@@ -538,24 +621,24 @@ export default function Dispatcher({ initialCase, initialPlan, cases, apiMode }:
 
       {activeView === "setup" && (
         <section className={styles.setupView}>
-          <div className={styles.viewTitle}><div><span className={styles.kicker}>Input workspace</span><h1>Case setup</h1><p>Edit technicians, jobs, and travel data before generating a plan.</p></div><div><button className={styles.secondaryButton} type="button" onClick={() => generate()}><Route size={16} /> Generate from setup</button><button className={styles.primaryButton} type="button" onClick={saveSetup} disabled={busyAction === "save"}>{busyAction === "save" ? <LoaderCircle className={styles.spinner} size={16} /> : <Check size={16} />} Save setup</button></div></div>
+          <div className={styles.viewTitle}><div><span className={styles.kicker}>Input workspace</span><h1>Case setup</h1><p>Edit technicians, jobs, and travel data before generating a plan.</p></div><div>{hasUnsavedChanges ? <span className={styles.changeStatus}><CircleAlert size={14} /> Unsaved changes</span> : planNeedsRefresh ? <span className={styles.changeStatus}><CircleAlert size={14} /> Plan needs regeneration</span> : <span className={styles.savedStatus}><Check size={14} /> Plan up to date</span>}<button className={styles.secondaryButton} type="button" onClick={() => generate()} disabled={!!busyAction}>{busyAction === "generate" ? <LoaderCircle className={styles.spinner} size={16} /> : <Route size={16} />} Save &amp; generate</button><button className={styles.primaryButton} type="button" onClick={saveSetup} disabled={!!busyAction || !hasUnsavedChanges}>{busyAction === "save" ? <LoaderCircle className={styles.spinner} size={16} /> : <Check size={16} />} Save changes</button></div></div>
           <div className={styles.setupTabs}>{(["technicians", "jobs", "matrix"] as SetupTab[]).map((tab) => <button type="button" className={setupTab === tab ? styles.setupTabActive : ""} onClick={() => setSetupTab(tab)} key={tab}>{tab === "technicians" ? <UsersRound size={16} /> : tab === "jobs" ? <Wrench size={16} /> : <Table2 size={16} />}{tab === "matrix" ? "Travel matrix" : tab[0].toUpperCase() + tab.slice(1)}<span>{tab === "technicians" ? caseData.technicians.length : tab === "jobs" ? caseData.jobs.length : caseData.areas.length}</span></button>)}</div>
 
-          {setupTab === "technicians" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Technicians</h2><p>Skills and shift availability for {caseData.today}.</p></div><button className={styles.secondaryButton} type="button" onClick={addTechnician}><Plus size={16} /> Add technician</button></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Name</th><th>Skills</th><th>Shift start</th><th>Shift end</th><th>Home area</th><th>Status</th></tr></thead><tbody>{caseData.technicians.map((technician, index) => <tr key={technician.id}><td><code>{technician.id}</code></td><td><input value={technician.name} onChange={(event) => updateTechnician(index, "name", event.target.value)} aria-label={`${technician.id} name`} /></td><td><input value={technician.skills.join(", ")} onChange={(event) => updateTechnician(index, "skills", event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} aria-label={`${technician.id} skills`} /></td><td><input type="time" value={technician.shift_start} onChange={(event) => updateTechnician(index, "shift_start", event.target.value)} aria-label={`${technician.id} shift start`} /></td><td><input type="time" value={technician.shift_end} onChange={(event) => updateTechnician(index, "shift_end", event.target.value)} aria-label={`${technician.id} shift end`} /></td><td><select value={technician.home_area} onChange={(event) => updateTechnician(index, "home_area", event.target.value)} aria-label={`${technician.id} home area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><span className={styles.activeStatus}><i /> Active</span></td></tr>)}</tbody></table></div></div>}
+          {setupTab === "technicians" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Technicians</h2><p>Skills and shift availability for {caseData.today}.</p></div><button className={styles.secondaryButton} type="button" onClick={addTechnician}><Plus size={16} /> Add technician</button></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Name</th><th>Skills</th><th>Shift start</th><th>Shift end</th><th>Home area</th><th>Status</th></tr></thead><tbody>{caseData.technicians.map((technician, index) => <tr key={technician.id}><td><code>{technician.id}</code></td><td><input value={technician.name} onChange={(event) => updateTechnician(index, "name", event.target.value)} aria-label={`${technician.id} name`} /></td><td><input value={technician.skills.join(", ")} onChange={(event) => updateTechnician(index, "skills", event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} aria-label={`${technician.id} skills`} /></td><td><input type="time" value={technician.shift_start} onChange={(event) => updateTechnician(index, "shift_start", event.target.value)} aria-label={`${technician.id} shift start`} /></td><td><input type="time" value={technician.shift_end} onChange={(event) => updateTechnician(index, "shift_end", event.target.value)} aria-label={`${technician.id} shift end`} /></td><td><select value={technician.home_area} onChange={(event) => updateTechnician(index, "home_area", event.target.value)} aria-label={`${technician.id} home area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={technician.status ?? "active"} onChange={(event) => updateTechnician(index, "status", event.target.value)} aria-label={`${technician.id} status`}><option value="active">Active</option><option value="sick">Sick</option></select></td></tr>)}</tbody></table></div></div>}
 
-          {setupTab === "jobs" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Jobs</h2><p>{caseData.jobs.length} service requests ready for assignment.</p></div><div className={styles.tableActions}><label className={styles.searchField}><Search size={15} /><input value={jobSearch} onChange={(event) => setJobSearch(event.target.value)} placeholder="Search jobs" aria-label="Search jobs" /></label><button className={styles.secondaryButton} type="button" onClick={addJob}><Plus size={16} /> Add job</button></div></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Area</th><th>Required skill</th><th>Duration</th><th>Window start</th><th>Window end</th><th>Status</th></tr></thead><tbody>{filteredJobs.map((job, index) => <tr key={job.id}><td><code>{job.id}</code></td><td><select value={job.area} onChange={(event) => updateJob(index, "area", event.target.value)} aria-label={`${job.id} area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={job.skill} onChange={(event) => updateJob(index, "skill", event.target.value)} aria-label={`${job.id} skill`}><option value="electrical">Electrical</option><option value="plumbing">Plumbing</option><option value="ac">AC</option><option value="gas_line">Gas line</option></select></td><td><input type="number" min="15" step="15" value={job.duration_minutes} onChange={(event) => updateJob(index, "duration_minutes", Number(event.target.value))} aria-label={`${job.id} duration`} /></td><td><input type="time" value={job.window_start} onChange={(event) => updateJob(index, "window_start", event.target.value)} aria-label={`${job.id} window start`} /></td><td><input type="time" value={job.window_end} onChange={(event) => updateJob(index, "window_end", event.target.value)} aria-label={`${job.id} window end`} /></td><td><span className={styles.readyStatus}><i /> Ready</span></td></tr>)}</tbody></table></div></div>}
+          {setupTab === "jobs" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Jobs</h2><p>{caseData.jobs.length} service requests ready for assignment.</p></div><div className={styles.tableActions}><label className={styles.searchField}><Search size={15} /><input value={jobSearch} onChange={(event) => setJobSearch(event.target.value)} placeholder="Search jobs" aria-label="Search jobs" /></label><button className={styles.secondaryButton} type="button" onClick={addJob}><Plus size={16} /> Add job</button></div></div><div className={styles.tableScroll}><table><thead><tr><th>ID</th><th>Area</th><th>Required skill</th><th>Duration</th><th>Window start</th><th>Window end</th><th>Status</th></tr></thead><tbody>{filteredJobs.map((job, index) => <tr key={job.id}><td><code>{job.id}</code></td><td><select value={job.area} onChange={(event) => updateJob(index, "area", event.target.value)} aria-label={`${job.id} area`}>{caseData.areas.map((area) => <option key={area}>{area}</option>)}</select></td><td><select value={job.skill} onChange={(event) => updateJob(index, "skill", event.target.value)} aria-label={`${job.id} skill`}><option value="electrical">Electrical</option><option value="plumbing">Plumbing</option><option value="ac">AC</option><option value="gas_line">Gas line</option></select></td><td><input type="number" min="15" step="15" value={job.duration_minutes} onChange={(event) => updateJob(index, "duration_minutes", Number(event.target.value))} aria-label={`${job.id} duration`} /></td><td><input type="time" value={job.window_start} onChange={(event) => updateJob(index, "window_start", event.target.value)} aria-label={`${job.id} window start`} /></td><td><input type="time" value={job.window_end} onChange={(event) => updateJob(index, "window_end", event.target.value)} aria-label={`${job.id} window end`} /></td><td><select value={job.status ?? "ready"} onChange={(event) => updateJob(index, "status", event.target.value)} aria-label={`${job.id} status`}><option value="ready">Pending</option><option value="in_progress">In progress</option><option value="done">Done</option></select></td></tr>)}</tbody></table></div></div>}
 
-          {setupTab === "matrix" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Travel matrix</h2><p>Authoritative drive time in minutes. Diagonal values represent same-area travel.</p></div><span className={styles.readOnly}><Settings2 size={14} /> Read only</span></div><div className={styles.matrixScroll}><table className={styles.matrix}><thead><tr><th>From / to</th>{caseData.areas.map((area) => <th key={area}>{area}</th>)}</tr></thead><tbody>{caseData.areas.map((from) => <tr key={from}><th>{from}</th>{caseData.areas.map((to) => <td className={from === to ? styles.matrixSame : ""} key={to}>{caseData.travel_minutes[from][to]}<small> min</small></td>)}</tr>)}</tbody></table></div></div>}
+          {setupTab === "matrix" && <div className={styles.dataPanel}><div className={styles.dataToolbar}><div><h2>Travel matrix</h2><p>Authoritative drive time in minutes. Mirrored cells update together.</p></div><span className={styles.editableStatus}><PencilLine size={14} /> Editable</span></div><div className={styles.matrixScroll}><table className={styles.matrix}><thead><tr><th>From / to</th>{caseData.areas.map((area) => <th key={area}>{area}</th>)}</tr></thead><tbody>{caseData.areas.map((from) => <tr key={from}><th>{from}</th>{caseData.areas.map((to) => <td className={from === to ? styles.matrixSame : ""} key={to}><input type="number" min="0" step="1" value={caseData.travel_minutes[from][to]} onChange={(event) => updateTravelTime(from, to, Number(event.target.value))} aria-label={`${from} to ${to} travel minutes`} /><small>min</small></td>)}</tr>)}</tbody></table></div></div>}
         </section>
       )}
 
       {activeView === "compare" && (
         <section className={styles.compareView}>
-          <div className={styles.viewTitle}><div><span className={styles.kicker}>Plan comparison</span><h1>Generated vs. working plan</h1><p>Review travel and coverage impact before confirming manual changes.</p></div></div>
+          <div className={styles.viewTitle}><div><span className={styles.kicker}>Plan comparison</span><h1>Baseline vs. working plan</h1><p>Compare first-fit routing with the optimized plan and manual changes.</p></div></div>
           <div className={styles.comparisonGrid}>
-            {[{ id: "generated" as const, label: "Generated plan", data: baselinePlan }, { id: "working" as const, label: "Working plan", data: plan }].map((item) => <button type="button" className={timelineSource === item.id ? styles.comparisonActive : ""} key={item.id} onClick={() => setTimelineSource(item.id)}><span className={styles.comparisonTop}><span><small>{item.label}</small><strong>{item.data.score}<em>/100</em></strong></span>{timelineSource === item.id && <BadgeCheck size={20} />}</span><span className={styles.comparisonMetrics}><span><b>{item.data.stats.total_travel_minutes}m</b><small>Travel</small></span><span><b>{item.data.stats.jobs_scheduled}</b><small>Scheduled</small></span><span><b>{item.data.stats.jobs_unassigned}</b><small>Unassigned</small></span><span><b>{item.data.stats.jobs_at_risk}</b><small>At risk</small></span></span><span className={styles.openTimeline}>View this timeline <ArrowRight size={16} /></span></button>)}
+            {[{ id: "baseline" as const, label: "First-fit baseline", data: baselinePlan }, { id: "working" as const, label: "Optimized / working", data: plan }].map((item) => <button type="button" className={timelineSource === item.id ? styles.comparisonActive : ""} key={item.id} onClick={() => setTimelineSource(item.id)}><span className={styles.comparisonTop}><span><small>{item.label}</small><strong>{item.data.score}<em>/100</em></strong></span>{timelineSource === item.id && <BadgeCheck size={20} />}</span><span className={styles.comparisonMetrics}><span><b>{item.data.stats.total_travel_minutes}m</b><small>Travel</small></span><span><b>{item.data.stats.jobs_scheduled}</b><small>Scheduled</small></span><span><b>{item.data.stats.jobs_unassigned}</b><small>Unassigned</small></span><span><b>{item.data.stats.jobs_at_risk}</b><small>At risk</small></span></span><span className={styles.openTimeline}>View this timeline <ArrowRight size={16} /></span></button>)}
           </div>
-          <div className={styles.routeSummary}><div className={styles.dataToolbar}><div><h2>{timelineSource === "generated" ? "Generated" : "Working"} route load</h2><p>Jobs and travel by technician.</p></div><button className={styles.primaryButton} type="button" onClick={() => setActiveView("plan")}>Open selected timeline <ArrowRight size={16} /></button></div><div className={styles.routeSummaryRows}>{caseData.technicians.map((technician) => { const route = displayPlan.assignments[technician.id] ?? []; const travel = route.reduce((sum, item) => sum + item.travel_minutes, 0); return <div key={technician.id}><span><strong>{technician.name}</strong><small>{technician.id}</small></span><div><i style={{ width: `${Math.min(100, route.length * 18)}%` }} /></div><b>{route.length} jobs</b><em>{travel}m travel</em></div>; })}</div></div>
+          <div className={styles.routeSummary}><div className={styles.dataToolbar}><div><h2>{timelineSource === "baseline" ? "Baseline" : "Working"} route load</h2><p>Jobs and travel by technician.</p></div><button className={styles.primaryButton} type="button" onClick={() => setActiveView("plan")}>Open selected timeline <ArrowRight size={16} /></button></div><div className={styles.routeSummaryRows}>{caseData.technicians.map((technician) => { const route = displayPlan.assignments[technician.id] ?? []; const travel = route.reduce((sum, item) => sum + item.travel_minutes, 0); return <div key={technician.id}><span><strong>{technician.name}</strong><small>{technician.id}</small></span><div><i style={{ width: `${Math.min(100, route.length * 18)}%` }} /></div><b>{route.length} jobs</b><em>{travel}m travel</em></div>; })}</div></div>
         </section>
       )}
 

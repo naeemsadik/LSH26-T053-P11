@@ -34,7 +34,6 @@ public class TravelMatrixService {
         if (areaA == null || areaB == null) {
             throw new ValidationException("Areas must not be null");
         }
-        syncFromRepository();
         return travelMatrix.getTravelTime(areaA, areaB);
     }
 
